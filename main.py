@@ -32,7 +32,6 @@ if __name__ == '__main__':
             # select and perform actions
             actions = [env.agents[i].select_action(obs[i]) for i in range(len(env.agents))]
             new_obs, rewards, done, info = env.step(actions)
-            print(rewards)
 
             # store the transition in memory
             for i in range(len(env.agents)):
@@ -55,7 +54,6 @@ if __name__ == '__main__':
         steps_done += 1
 
     print("Complete")
-    # env.render()
 
     # render result
     obs = env.reset()
@@ -67,6 +65,7 @@ if __name__ == '__main__':
         if done:
             print(f"Episode final finished after {step + 1} time steps")
             break
+    env.render()
 
     env.close()
     plt.ioff()

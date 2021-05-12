@@ -241,7 +241,7 @@ class GridWorld(gym.Env):
 
         # check for out of bounds
         if not (0 <= n < self.grid.shape[0] and 0 <= m < self.grid.shape[1]):
-            reward = -2
+            reward = -0.8
             # agent.done = True
             illegal = True
 
@@ -250,14 +250,14 @@ class GridWorld(gym.Env):
         # the definition of Cell objects : check if cell is empty or not
         elif (self.grid[n, m] == GridWorld.GridLegend.OBSTACLE  # obstacles
               or (n, m) in [self.agents[j].pos for j in range(len(self.agents)) if j != i]):  # other agents
-            reward = -2
+            reward = -0.75
             illegal = True
             # agent.done = True
 
         # check if agent reached its goal
         # (does each agent have a specific goal? If yes, is it an attribute of the class Agent?)
         elif (n, m) == agent.goal:
-            reward = 100
+            reward = 1.0
             agent.done = True
 
         # # penalize for visiting previously visited cells
@@ -266,7 +266,7 @@ class GridWorld(gym.Env):
 
         # penalise the agent for extra moves
         else:
-            reward = -0.1
+            reward = -0.04
             # self.agents_visited_cells[agent].append((n, m))
 
         return reward, illegal

@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import namedtuple, deque
 
 import numpy as np
 import random
@@ -49,16 +49,17 @@ class Agent:
         self.learning_rate = 0.1
 
         # Discount factor for the Q-table update equation
-        self.discount_factor = 0.999
+        self.discount_factor = 0.9
 
         # Neural network
         self.model = DQN(window_size=window_size, num_actions=len(self.actions))
 
         # Optimizer
         self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        self.criterion = nn.SmoothL1Loss()
 
         self.max_buffer_size = 100
-        self.experience_replay = []
+        self.experience_replay = deque([], maxlen=10000)
 
     def select_action(self, observation):
         if random.random() > self.eps:
@@ -67,7 +68,7 @@ class Agent:
                 input_tensor = (torch.from_numpy(observation).view(1, -1)).float()  # convert to float because DQN expect float and not double
                 # t.argmax(1) will return the index of the maximum value of all elements in the tensor t
                 # so it return the action (as an integer) with the larger expected reward.
-                return self.model(input_tensor).argmax(1).view(1, 1)
+                return self.model(input_tensor).max(1)[1].view(1, 1)
         else:
             return torch.tensor([[random.randrange(len(self.actions))]], dtype=torch.long)
 
@@ -114,9 +115,9 @@ class Agent:
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * self.discount_factor) + reward_batch
         expected_state_action_values = expected_state_action_values.float()
+
         # Compute Huber loss
-        criterion = nn.SmoothL1Loss()
-        loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+        loss = self.criterion(state_action_values, expected_state_action_values.unsqueeze(1))
 
         # Optimize the model
         self.optimizer.zero_grad()
