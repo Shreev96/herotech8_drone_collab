@@ -21,10 +21,13 @@ if __name__ == '__main__':
         [1., 1., 0., 1., 1.],
     ])
     env = GridWorld(agents=[agent_1], grid=init_grid)
+    plt.ion()
+
+    env.reset()
+    env.render()
 
     for episode in range(episodes):
         obs = env.reset()
-        plt.clf()
 
         agent_1.eps = 0.05 + (0.9 - 0.05) * math.exp(-1 * steps_done / 1000)
         for step in range(steps):
