@@ -9,10 +9,13 @@ from gridworld import GridWorld
 
 if __name__ == '__main__':
     # Model training parameters
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU
+
     steps = 500
     episodes = 1000
     steps_done = 0
-    agent_1 = Agent(2, (0, 0), (4, 4), 5)
+    target_update = 10
+    agent_1 = Agent(2, (0, 0), (4, 4), 5, device)
     init_grid = np.array([
         [1., 1., 0., 1., 1.],
         [1., 1., 1., 1., 0.],
@@ -40,7 +43,7 @@ if __name__ == '__main__':
             for i in range(len(env.agents)):
                 agent = env.agents[i]
                 action = actions[i]
-                reward = torch.tensor([rewards[i]])
+                reward = torch.tensor([rewards[i]], device=device)
                 agent.add_to_buffer(obs[i], action, reward, new_obs[i])
 
             # move to the next state
@@ -53,7 +56,15 @@ if __name__ == '__main__':
             if done:
                 print(f"Episode {episode} finished after {step + 1} time steps")
                 break
+            # Update the target network, copying all weights and biases in DQN
 
+        if episode % target_update == 0:
+            # Update target network for each of the agents
+            for i in range(len(env.agents)):
+                agent = env.agents[i]
+                agent.target_model.load_state_dict(
+                    agent.policy_model.state_dict()
+                                                  )
         steps_done += 1
 
     print("Complete")

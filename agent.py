@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from DQN import DQN
+from DQN_Conv import DQN
 
 
 class Agent:
@@ -22,7 +22,7 @@ class Agent:
     Transition = namedtuple('Transition',
                             ('state', 'action', 'reward', 'next_state'))
 
-    def __init__(self, i, init_pos, goal, window_size):
+    def __init__(self, i, init_pos, goal, window_size, device):
         # ID of the agent (represents the integer number to look for on the grid
         self.id = i
 
@@ -52,10 +52,14 @@ class Agent:
         self.discount_factor = 0.9
 
         # Neural network
-        self.model = DQN(window_size=window_size, num_actions=len(self.actions))
+        self.device = device
+        self.policy_model = DQN(self.device, window_size=window_size, num_actions=len(self.actions)).to(self.device)
+        self.target_model = DQN(self.device, window_size=window_size, num_actions=len(self.actions)).to(self.device)
+        self.target_model.load_state_dict(self.policy_model.state_dict())
+        self.target_model.eval()
 
         # Optimizer
-        self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        self.optimizer = optim.SGD(self.policy_model.parameters(), lr=self.learning_rate)
         self.criterion = nn.SmoothL1Loss()
 
         self.max_buffer_size = 100
@@ -68,9 +72,10 @@ class Agent:
                 input_tensor = (torch.from_numpy(observation).view(1, -1)).float()  # convert to float because DQN expect float and not double
                 # t.argmax(1) will return the index of the maximum value of all elements in the tensor t
                 # so it return the action (as an integer) with the larger expected reward.
-                return self.model(input_tensor).max(1)[1].view(1, 1)
+                return self.policy_model(input_tensor).max(1)[1].view(1, 1)
         else:
-            return torch.tensor([[random.randrange(len(self.actions))]], dtype=torch.long)
+            return torch.tensor([[random.randrange(len(self.actions))]],
+                                device = self.device, dtype=torch.long)
 
     def add_to_buffer(self, s, a, r, s_):
         """Save a transition in the experience replay memory"""
@@ -97,7 +102,8 @@ class Agent:
         # Compute a mask of non-final states and concatenate the batch elements
         # (a final state would've been the one after which simulation ended)
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                                batch.next_state)), dtype=torch.bool)
+                                                batch.next_state)),
+                                      device=self.device, dtype=torch.bool)
         non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
 
         state_batch = torch.cat(batch.state)
@@ -105,12 +111,12 @@ class Agent:
         reward_batch = torch.cat(batch.reward)
 
         # Compute Q(s_t, a)
-        state_action_values = self.model(state_batch).gather(1, action_batch)
+        state_action_values = self.policy_model(state_batch).gather(1, action_batch)
 
         # Compute max_a(Q(s_{t+1}, a)) for all next states (when state is not final)
         # could be done using a target DQN for stability
-        next_state_values = torch.zeros(self.batch_size)
-        next_state_values[non_final_mask] = self.model(non_final_next_states).max(1)[0].detach()
+        next_state_values = torch.zeros(self.batch_size, device=self.device)
+        next_state_values[non_final_mask] = self.target_model(non_final_next_states).max(1)[0].detach()
 
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * self.discount_factor) + reward_batch
@@ -122,7 +128,7 @@ class Agent:
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
-        for param in self.model.parameters():
+        for param in self.policy_model.parameters():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
