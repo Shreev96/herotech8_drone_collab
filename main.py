@@ -1,4 +1,5 @@
 import math
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +11,7 @@ from gridworld import GridWorld
 if __name__ == '__main__':
     # Model training parameters
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU
-
+    # device = None
     steps = 500
     episodes = 1000
     steps_done = 0
@@ -29,6 +30,7 @@ if __name__ == '__main__':
     env.reset()
     env.render()
 
+    start_time = time.time()
     for episode in range(episodes):
         obs = env.reset()
 
@@ -68,6 +70,7 @@ if __name__ == '__main__':
         steps_done += 1
 
     print("Complete")
+    print("--- %s seconds ---" % (time.time() - start_time))
 
     # render result
     obs = env.reset()
