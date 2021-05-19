@@ -10,7 +10,7 @@ class DQN(nn.Module):
     def __init__(self, device, window_size, num_actions):
         super().__init__()
         self.device = device
-        # Note that the input to the NN is the flattened tensor of the grid state (here, 1 x 25)
+        # Note that the input to the NN is the flattened tensor of the grid state (here, 1 x window_size ** 2)
         self.fc1 = nn.Linear(window_size ** 2, 16)
         self.fc2 = nn.Linear(16, 8)
         self.fc3 = nn.Linear(8, num_actions)
