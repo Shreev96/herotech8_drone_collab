@@ -82,16 +82,16 @@ class AgentSQN(AgentBase):
         self.target_model = SoftQNetwork(window_size=window_size, num_actions=len(self.actions)).to(self.device)
         self.target_model.load_state_dict(self.policy_model.state_dict())
 
-        self.alpha = 4
+        self.alpha = 1
 
         # Batch size
         self.batch_size = 128
 
         # Learning rate for the Q-table update equation
-        self.learning_rate = 1e-4
+        self.learning_rate = 0.1
 
         # Discount factor for the Q-table update equation
-        self.discount_factor = 0.99
+        self.discount_factor = 0.9
 
         # Step delay before target_model update
         self.update_steps = 10
@@ -105,13 +105,13 @@ class AgentSQN(AgentBase):
             # Compute soft Action-Value Q values
             q_values = self.policy_model(observation)
             # Compute soft-Value V values
-            v_values = self.alpha * torch.log(torch.sum(torch.exp(q_values / self.alpha), dim=1, keepdim=True))
+            v_values = self.alpha * torch.logsumexp(q_values / self.alpha, dim=1, keepdim=True)
             # Compute distribution
             dist = torch.exp((q_values - v_values) / self.alpha)
             dist = dist / torch.sum(dist)
             c = Categorical(dist)
             a = c.sample()
-            return a.view(1,1)
+        return a.view(1, 1)
 
     def train(self):
         if len(self.experience_replay) < self.batch_size:
@@ -147,10 +147,9 @@ class AgentSQN(AgentBase):
             next_state_q_values = self.target_model(non_final_next_states)
             # Compute soft-V(s_{t+1}) for all the next state
             next_state_values = torch.zeros((self.batch_size, 1), device=self.device)
-            next_state_values[non_final_mask] = self.alpha * torch.log(
-                torch.sum(
-                    torch.exp(next_state_q_values / self.alpha), dim=1, keepdim=True))
-
+            next_state_values[non_final_mask] = self.alpha * torch.logsumexp(next_state_q_values / self.alpha,
+                                                                             dim=1,
+                                                                             keepdim=True)
             # Compute expected Q-values
             expected_q = (next_state_values * self.discount_factor) + reward_batch
             expected_q = expected_q.float()
