@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from agent import AgentDQN, AgentSQN
+from SQN import AgentSQN
+from DQN_Conv import AgentDQN
 from gridworld import GridWorld
 from random_grid_generator import random_maze
 
@@ -13,7 +14,7 @@ if __name__ == '__main__':
     # Model training parameters
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU
     # device = None
-    steps = 500
+    steps = 100
     episodes = 1000
     steps_done = 0
     target_update = 10
@@ -47,7 +48,6 @@ if __name__ == '__main__':
     for episode in range(episodes):
         obs = env.reset()
 
-        agent_1.eps = 0.05 + (0.9 - 0.05) * math.exp(-1 * steps_done / 1000)
         for step in range(steps):
             # env.render()
             # select and perform actions
@@ -72,14 +72,6 @@ if __name__ == '__main__':
                 print(f"Episode {episode} finished after {step + 1} time steps")
                 break
 
-        # # Update the target network, copying all weights and biases in DQN
-        # if episode % target_update == 0:
-        #     # Update target network for each of the agents
-        #     for i in range(len(env.agents)):
-        #         agent = env.agents[i]
-        #         agent.target_model.load_state_dict(
-        #             agent.policy_model.state_dict()
-        #                                           )
         steps_done += 1
 
     print("Complete")
@@ -96,7 +88,6 @@ if __name__ == '__main__':
     U, V = env.greedy_det_policy(v_values, 0)  # U and V are x and y unit vectors respectively
     env.render(policy=True, u=U, v=V)
 
-    agent_1.eps = 0
     for step in range(steps):
         env.render()
         actions = [env.agents[i].select_action(obs[i]) for i in range(len(env.agents))]

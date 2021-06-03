@@ -200,7 +200,7 @@ class GridWorld(gym.Env):
         """Raised when an agent try to do an unknown action"""
         pass
 
-    def __init__(self, agents=None, grid=np.ones((5, 5)), partial_obs=False, width=5, height=5, max_steps=100,
+    def __init__(self, agents=None, grid=np.ones((5, 5)), partial_obs=False, width=5, height=5,
                  col_wind=np.zeros((5,)), range_random_wind=0, probabilities=None):
 
         if agents is None:
@@ -225,9 +225,6 @@ class GridWorld(gym.Env):
         self.agents_initial_pos = [agent.pos for agent in self.agents]  # starting position of the agents on the grid
         # self.agents_visited_cells = {agent: [] for agent in self.agents}  # initialise agents visited cells lists
 
-        self.max_steps = max_steps
-        self.step_count = 0
-
         # Wind effects -- TODO: May need to be moved into the world object? or is it okay here?
         self.np_random, _ = self.seed()  # Seeding the random number generator
 
@@ -237,6 +234,16 @@ class GridWorld(gym.Env):
         self.w_range = np.arange(-self.range_random_wind, self.range_random_wind + 1)
         self.probabilities = probabilities  # Stochasticity implemented through noise
         assert sum(self.probabilities) == 1
+
+    def reset(self):
+        for agent in self.agents:
+            agent.reset()
+        # TODO: make it random later
+
+        # self.render()  # show the initial arrangement of the grid
+
+        # return first observation
+        return self.gen_obs()
 
     def trans_function(self, state, action, noise):
         """Creating transition function based on environmental factors
@@ -268,20 +275,6 @@ class GridWorld(gym.Env):
             (n, m) = (n, m + 1 + wind)
 
         return n, m
-
-    def reset(self):
-        for i in range(len(self.agents)):
-            agent = self.agents[i]
-            agent.pos = self.agents_initial_pos[i]
-            agent.done = False
-            # self.agents_visited_cells[agent] = []
-        # TODO: make it random later
-
-        self.step_count = 0
-        # self.render()  # show the initial arrangement of the grid
-
-        # return first observation
-        return self.gen_obs()
 
     def _reward_agent(self, i, move):
         """ compute the reward for the i-th agent in the current state"""
@@ -322,7 +315,6 @@ class GridWorld(gym.Env):
         return reward, illegal
 
     def step(self, actions):
-        self.step_count += 1
 
         assert len(actions) == len(self.agents), "number of actions must be equal to number of agents"
 
@@ -357,6 +349,7 @@ class GridWorld(gym.Env):
             moves[i] = (n_, m_)
 
         # compute rewards and apply moves if they are legal
+        # TODO: improve that to take crashes between agents in account
         for i in range(len(self.agents)):
             # compute rewards and illegal assertions
             rewards[i], illegal = self._reward_agent(i, moves[i])
@@ -365,8 +358,8 @@ class GridWorld(gym.Env):
             if not illegal:
                 self.agents[i].pos = moves[i]
 
-        # game over if step_count greater than max_steps or if all the agents are done
-        done = self.step_count >= self.max_steps or all(agent.done for agent in self.agents)
+        # game over if all the agents are done
+        done = all(agent.done for agent in self.agents)
 
         # compute observation
         obs = self.gen_obs()
