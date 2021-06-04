@@ -83,16 +83,16 @@ class AgentSQN(AgentBase):
         self.target_model.load_state_dict(self.policy_model.state_dict())
 
         # Entropy weighting
-        self.alpha = 0.01  # Changed
+        self.alpha = 0.01
 
         # Batch size
         self.batch_size = 128
 
         # Learning rate for the Q table update equation
-        self.learning_rate = 0.01  # Changed
+        self.learning_rate = 0.01
 
         # Discount factor for the Q-table update equation
-        self.discount_factor = 0.99  # Changed
+        self.discount_factor = 0.99
 
         # Step delay before target_model update
         self.update_steps = 10  # Could also use 2
