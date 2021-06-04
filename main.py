@@ -7,6 +7,7 @@ import torch
 
 from agent import AgentDQN, AgentSQN
 from gridworld import GridWorld
+from random_grid_generator import random_maze
 
 if __name__ == '__main__':
     # Model training parameters
@@ -17,6 +18,7 @@ if __name__ == '__main__':
     steps_done = 0
     target_update = 10
     agent_1 = AgentSQN(2, (0, 0), (4, 4), 5, device)
+    # init_grid = random_maze(width=6, height=6, complexity=1, density=1)
     init_grid = np.array([
         [1., 1., 0., 1., 1.],
         [1., 1., 1., 1., 0.],
@@ -24,7 +26,18 @@ if __name__ == '__main__':
         [0., 1., 1., 1., 1.],
         [1., 1., 0., 1., 1.],
     ])
-    env = GridWorld(agents=[agent_1], grid=init_grid)
+
+    # # Ordinary gridworld
+    # env = GridWorld(agents=[agent_1], grid=init_grid)
+
+    # Stochastic windy gridworld
+    wind = [0, 1, 1, 0, 0]  # Row-wise wind addition towards the right (increasing col. idx)
+    range_random_wind = 1
+    probabilities = [0.2, 0.3, 0.5]  # [-1, 0, 1] noise added to wind-related position updates
+
+    env = GridWorld(agents=[agent_1], grid=init_grid, col_wind=wind,
+                    range_random_wind=range_random_wind, probabilities=probabilities)
+
     plt.ion()
 
     env.reset()
@@ -74,6 +87,15 @@ if __name__ == '__main__':
 
     # render result
     obs = env.reset()
+
+    # evaluate value function for agent 1 (id = 0) and display
+    v_values = env.eval_value_func(0)
+    env.render(value_func=True, v_values=v_values)
+
+    # devise a greedy deterministic policy for agent 1 and display
+    U, V = env.greedy_det_policy(v_values, 0)  # U and V are x and y unit vectors respectively
+    env.render(policy=True, u=U, v=V)
+
     agent_1.eps = 0
     for step in range(steps):
         env.render()
