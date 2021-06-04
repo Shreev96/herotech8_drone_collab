@@ -82,19 +82,20 @@ class AgentSQN(AgentBase):
         self.target_model = SoftQNetwork(window_size=window_size, num_actions=len(self.actions)).to(self.device)
         self.target_model.load_state_dict(self.policy_model.state_dict())
 
-        self.alpha = 1
+        # Entropy weighting
+        self.alpha = 0.01
 
         # Batch size
         self.batch_size = 128
 
         # Learning rate for the Q-table update equation
-        self.learning_rate = 0.1
+        self.learning_rate = 0.01
 
         # Discount factor for the Q-table update equation
-        self.discount_factor = 0.9
+        self.discount_factor = 0.99
 
         # Step delay before target_model update
-        self.update_steps = 10
+        self.update_steps = 10  # Could also use '2'
         self._learned_steps = 0
 
         self.optimizer = optim.Adam(self.policy_model.parameters(), lr=self.learning_rate)
