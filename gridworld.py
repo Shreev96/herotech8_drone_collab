@@ -4,8 +4,12 @@ import gym
 import matplotlib.pyplot as plt
 import numpy as np
 from gym import spaces
+from gym.utils import seeding
 
 from rendering import fill_coords, point_in_rect, highlight_img, downsample
+
+from copy import deepcopy
+import torch
 
 
 class WorldObj:
@@ -196,11 +200,16 @@ class GridWorld(gym.Env):
         """Raised when an agent try to do an unknown action"""
         pass
 
-    def __init__(self, agents=None, grid=np.ones((5, 5)), partial_obs=False, width=5, height=5, max_steps=100):
+    def __init__(self, agents=None, grid=np.ones((5, 5)), partial_obs=False, width=5, height=5, max_steps=100,
+                 col_wind=np.zeros((5,)), range_random_wind=0, probabilities=None):
+
         if agents is None:
             agents = []
         self.agents = agents
-        self.grid = grid  # TODO: make it random later
+        self.grid = grid  # TODO: make it random later -- DONE
+
+        if probabilities is None and range_random_wind == 0:
+            probabilities = [1]  # Zero noise
 
         # Define if the agents use partial observation or global observation
         self.partial_obs = partial_obs
@@ -218,6 +227,47 @@ class GridWorld(gym.Env):
 
         self.max_steps = max_steps
         self.step_count = 0
+
+        # Wind effects -- TODO: May need to be moved into the world object? or is it okay here?
+        self.np_random, _ = self.seed()  # Seeding the random number generator
+
+        self.col_wind = col_wind  # Static wind  (rightwards is positive)
+
+        self.range_random_wind = range_random_wind  # Random (dynamic) wind added on top of static wind
+        self.w_range = np.arange(-self.range_random_wind, self.range_random_wind + 1)
+        self.probabilities = probabilities  # Stochasticity implemented through noise
+        assert sum(self.probabilities) == 1
+
+    def trans_function(self, state, action, noise):
+        """Creating transition function based on environmental factors
+        For now, only wind considered -> static + random (pre-defined probabilities that the agent can
+        figure out through experience)"""
+
+        n, m = state
+
+        if self.col_wind[n] != 0:
+            wind = self.col_wind[n] + noise
+
+        else:
+            wind = 0  # Irrespective of random noise
+
+        # Go UP
+        if action == self.actions.up:
+            (n, m) = (n - 1, m + wind)
+
+        # Go DOWN
+        elif action == self.actions.down:
+            (n, m) = (n + 1, m + wind)
+
+        # Go LEFT
+        elif action == self.actions.left:
+            (n, m) = (n, m - 1 + wind)
+
+        # Go RIGHT
+        elif action == self.actions.right:
+            (n, m) = (n, m + 1 + wind)
+
+        return n, m
 
     def reset(self):
         for i in range(len(self.agents)):
@@ -295,29 +345,16 @@ class GridWorld(gym.Env):
             agent = self.agents[i]
 
             # agent current pos
-            (n, m) = agent.pos
+            (n, m) = agent.pos  # n is the row number, m is the column number
 
-            # Go LEFT
-            if action == self.actions.left:
-                n = -1
+            # Adding random noise (wind) to the action
+            noise = self.np_random.choice(self.w_range, 1, p=self.probabilities)[0]
 
-            # Go RIGHT
-            elif action == self.actions.right:
-                n += 1
+            # Generate move
+            (n_, m_) = self.trans_function((n, m), action, noise)
 
-            # Go UP
-            elif action == self.actions.up:
-                m += 1
-
-            # Go DOWN
-            elif action == self.actions.down:
-                m -= 1
-
-            # unknown action
-            else:
-                raise GridWorld.UnknownAction("Unknown action")
-
-            moves[i] = (n, m)
+            # Store backup of move for each agent (i)
+            moves[i] = (n_, m_)
 
         # compute rewards and apply moves if they are legal
         for i in range(len(self.agents)):
@@ -373,30 +410,180 @@ class GridWorld(gym.Env):
 
             return canvas
 
-    def render(self, mode='human'):
-        canvas = self.grid.copy()
+    def eval_value_func(self, agent_id):
+        """Function to evaluate the value of each position in the grid,
+        given a unique agent ID (context for values)"""
 
-        for agent in self.agents:
-            # mark the visited cells in 0.6 gray
-            # canvas[tuple(self.agents_visited_cells[agent])] = 0.6
+        # Simulate observations from each free space in the grid
+        # 'obs' is typically a 5 x 5 numpy array (for now)
+        free_spaces = np.where(self.grid[:, :] == self.GridLegend.FREE)  # returns are row and cols in a tuple
+        obstacle_spaces = np.where(self.grid[:, :] == self.GridLegend.OBSTACLE)  # returns are row and cols in a tuple
+        row = free_spaces[0]
+        col = free_spaces[1]
+        grid = deepcopy(self.grid)  # Copy over current position of grid (immediately after reset)
+        grid_backup = deepcopy(self.grid)  # Backup for resetting the agent position
+        v_values = np.zeros_like(grid)  # Obstacles will have a large negative value
+        agent = self.agents[agent_id]
 
-            # mark the terminal states in 0.9 gray
-            canvas[agent.goal] = 0.9
+        for ii in range(len(row)):
+            n = row[ii]
+            m = col[ii]
 
-            # mark the current position in 0.3 gray
-            canvas[agent.pos] = 0.3
+            grid[n, m] = self.GridLegend.AGENT  # Set agent current position
 
-        if mode == "human":
-            plt.grid("on")
+            observation = torch.FloatTensor(grid).view(1, -1).to(agent.device)
+            with torch.no_grad():
+                # Compute soft Action-Value Q values
+                q_values = agent.policy_model(observation)
+                # Compute soft-Value V value of the agent being in that position
+                value = agent.alpha * torch.logsumexp(q_values / agent.alpha, dim=1, keepdim=True)
+                v_values[n, m] = value.cpu().detach().numpy()
 
-            ax = plt.gca()
-            rows, cols = self.grid.shape
-            ax.set_xticks(np.arange(0.5, rows, 1))
-            ax.set_yticks(np.arange(0.5, cols, 1))
-            ax.set_xticklabels([])
-            ax.set_yticklabels([])
+            grid = deepcopy(grid_backup)  # Reset grid (erase agent current position)
 
-            ax.imshow(canvas, interpolation='none', cmap='gray')
-            plt.show()
-        else:
-            super(GridWorld, self).render(mode=mode)  # just raise an exception for not Implemented mode
+        # Make sure the goal state is a sink (largest V value)
+        v_values[agent.goal] = np.amax(v_values) + 0.5
+
+        # Setting the obstacle V values to the lowest
+        row = obstacle_spaces[0]
+        col = obstacle_spaces[1]
+        min_ = deepcopy(np.amin(v_values) - 0.5)
+
+        for ii in range(len(row)):
+            n = row[ii]
+            m = col[ii]
+
+            v_values[n, m] = min_
+
+        # # Normalize V values
+        # v_values = v_values/np.amax(v_values)
+
+        return v_values
+
+    def greedy_det_policy(self, v_values, agent_id):
+        """Given a value function for an agent, the purpose of this function
+        is to create a deterministic policy from any position to continue mission"""
+
+        (rows, cols) = np.shape(self.grid)
+
+        # Initializing arrow vectors for the quiver plot
+        u = np.zeros((rows, cols))
+        v = np.zeros((rows, cols))
+
+        for n in range(rows):
+            for m in range(cols):
+
+                # Do not consider positions where the obstacles/terminal state are
+                if self.grid[n, m] == self.GridLegend.OBSTACLE or (n, m) == self.agents[agent_id].goal:
+                    continue
+
+                moves = {}
+
+                # Check above
+                if n > 0:
+                    moves[self.LegalActions.up] = v_values[n - 1, m]
+                else:
+                    moves[self.LegalActions.up] = np.amin(v_values)
+
+                # Check below
+                if n < rows - 1:
+                    moves[self.LegalActions.down] = v_values[n + 1, m]
+                else:
+                    moves[self.LegalActions.down] = np.amin(v_values)  # Equal to obstacles' V values
+
+                # Check left
+                if m > 0:
+                    moves[self.LegalActions.left] = v_values[n, m - 1]
+                else:
+                    moves[self.LegalActions.left] = np.amin(v_values)
+
+                # Check right
+                if m < cols - 1:
+                    moves[self.LegalActions.right] = v_values[n, m + 1]
+                else:
+                    moves[self.LegalActions.right] = np.amin(v_values)
+
+                action = max(moves, key=moves.get)
+
+                if action == self.LegalActions.up:
+                    u[n, m] = 0
+                    v[n, m] = 1
+
+                elif action == self.LegalActions.down:
+                    u[n, m] = 0
+                    v[n, m] = -1
+
+                elif action == self.LegalActions.right:
+                    u[n, m] = 1
+                    v[n, m] = 0
+
+                elif action == self.LegalActions.left:
+                    u[n, m] = -1
+                    v[n, m] = 0
+
+        return u, v
+
+    def render(self, mode='human', value_func=False, v_values=np.zeros((5, 5)),
+               policy=False, u=np.zeros((5, 5)), v=np.zeros((5, 5))):
+
+        # With or without greedy deterministic policy
+        if not value_func:
+
+            canvas = self.grid.copy()
+
+            for agent in self.agents:
+                # mark the visited cells in 0.6 gray
+                # canvas[tuple(self.agents_visited_cells[agent])] = 0.6
+
+                # mark the terminal states in 0.9 gray
+                canvas[agent.goal] = 0.9
+
+                # mark the current position in 0.3 gray
+                canvas[agent.pos] = 0.3
+
+            if mode == "human":
+                plt.grid("on")
+
+                ax = plt.gca()
+                rows, cols = self.grid.shape
+                ax.set_xticks(np.arange(0.5, rows, 1))
+                ax.set_yticks(np.arange(0.5, cols, 1))
+                ax.set_xticklabels([])
+                ax.set_yticklabels([])
+
+                ax.imshow(canvas, interpolation='none', cmap='gray')
+
+            else:
+                super(GridWorld, self).render(mode=mode)  # just raise an exception for not Implemented mode
+
+        elif value_func:
+
+            # v_values_sq = v_values ** 2  # Squaring to see more contrast between places
+
+            v_min = np.amin(v_values)
+            v_max = np.amax(v_values)
+
+            plt.imshow(v_values, vmin=v_min, vmax=v_max, zorder=0)
+
+            plt.colorbar()
+            plt.yticks(np.arange(-0.5, np.shape(self.grid)[0] + 0.5, step=1))
+            plt.xticks(np.arange(-0.5, np.shape(self.grid)[1] + 0.5, step=1))
+            plt.grid()
+
+            if not policy:
+                plt.title("Value function map using SQN")
+
+        if policy:
+
+            plt.quiver(np.arange(np.shape(self.grid)[0]), np.arange(np.shape(self.grid)[1]), u, v, zorder=10,
+                       label="Policy")
+            plt.title('Equivalent Greedy Policy')
+
+        plt.show()
+
+    def seed(self, seed=None):
+        """Sets the seed for the environment to maintain consistency during training"""
+
+        rn_gen, seed = seeding.np_random(seed)
+
+        return rn_gen, seed
