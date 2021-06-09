@@ -24,15 +24,16 @@ class AgentBase:
     Transition = namedtuple('Transition',
                             ('state', 'action', 'reward', 'next_state', 'done'))
 
-    def __init__(self, i, init_pos, goal, device):
+    def __init__(self, i, device, start=None, goal=None):
         # ID of the agent (represents the integer number to look for on the grid
         self.id = i
 
         # Position of the agent
-        self._init_pos = init_pos
-        self.pos = init_pos
+        self.init_pos = start
+        self.pos = start
 
         # Position of its goal
+        self.init_goal = goal
         self.goal = goal
 
         # Boolean to know if the agent is done
@@ -46,10 +47,6 @@ class AgentBase:
 
         # PyTorch stuff
         self.device = device
-
-    def reset(self):
-        self.pos = self._init_pos
-        self.done = False
 
     def add_to_buffer(self, s, a, r, s_, done):
         """Save a transition in the experience replay memory"""

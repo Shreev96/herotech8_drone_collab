@@ -1,4 +1,6 @@
+import random
 from enum import IntEnum
+from typing import Tuple, Dict, Optional
 
 import gym
 import matplotlib.pyplot as plt
@@ -12,48 +14,58 @@ from copy import deepcopy
 import torch
 
 
-class WorldObj:
+class WorldObj:  # not used yet
     """
     Base class for grid world objects
     """
+
     def __init__(self):
         self.pos = None
 
-    def encode(self):
+    def encode(self) -> Tuple[int, ...]:
         """Encode the description of this object"""
-        return None
+        raise NotImplementedError
 
-    def on_entering(self, agent):
+    def on_entering(self, agent) -> ():
         """Action to perform when an agent enter this object"""
         raise NotImplementedError
 
-    def on_leaving(self, agent):
+    def on_leaving(self, agent) -> ():
         """Action to perform when an agent exit this object"""
         raise NotImplementedError
 
-    def can_overlap(self):
+    def can_overlap(self) -> bool:
         """Can an agent overlap this object?"""
         return True
 
-    def render(self, r):
+    def render(self, r) -> ():
         """Draw this object with the given renderer"""
         raise NotImplementedError
 
 
-class Grid:
+class Grid:  # not used yet
     """
-    Represent a grid and operations on it
+    Base class for grids and operations on it (not used yet)
     """
+    # Type hints
+    _obj_2_idx: Dict[Optional[WorldObj], int]
 
     # Static cache of pre-rendered tiles
     tile_cache = {}
 
-    def __init__(self, width, height):
+    class EncodingError(Exception):
+        """Exception raised for missing entry in _obj_2_idx"""
+        pass
 
+    def __init__(self, width: int, height: int):
+        """Create an empty Grid"""
         self.width = width
         self.height = height
 
         self.grid = np.empty(shape=(width, height), dtype=WorldObj)
+
+        self._obj_2_idx = {None: 0}
+        self._idx_2_obj = {v: k for k, v in self._obj_2_idx.items()}
 
     @classmethod
     def from_array(cls, array: np.ndarray):
@@ -61,6 +73,10 @@ class Grid:
         out = cls(width, height)
         out.grid = array
         return out
+
+    @property
+    def obj_2_idx(self):
+        return self._obj_2_idx
 
     def __contains__(self, item):
         return item in self.grid
@@ -103,7 +119,7 @@ class Grid:
         assert 0 <= top_y + width < self.height
         assert 0 <= top_y < self.height
 
-        return Grid.from_array(self.grid[top_x:(top_x+width), top_y:(top_y+height)])
+        return Grid.from_array(self.grid[top_x:(top_x + width), top_y:(top_y + height)])
 
     @classmethod
     def render_tile(cls, obj: WorldObj, highlight=False, tile_size=32, subdivs=3):
@@ -131,7 +147,7 @@ class Grid:
         if highlight:
             highlight_img(img)
 
-        # Downsample the image to perform supersampling/anti-aliasing
+        # Down-sample the image to perform super-sampling/anti-aliasing
         img = downsample(img, subdivs)
 
         # Cache the rendered tile
@@ -139,7 +155,7 @@ class Grid:
 
         return img
 
-    def render(self, tile_size=32, agent_pos=None, highlight_mask=None):
+    def render(self, tile_size=32, highlight_mask=None):
         """
         Render this grid at a given scale
         :param tile_size: tile size in pixels
@@ -159,7 +175,6 @@ class Grid:
             for i in range(0, self.width):
                 cell = self.get(i, j)
 
-                agent_here = np.array_equal(agent_pos, (i, j))
                 tile_img = Grid.render_tile(
                     cell,
                     highlight=highlight_mask[i, j],
@@ -173,6 +188,55 @@ class Grid:
                 img[ymin:ymax, xmin:xmax, :] = tile_img
 
         return img
+
+    def encode(self, vis_mask: np.ndarray = None):
+        """
+        Produce a compact numpy encoding of the grid with tuples for each cells
+        :param vis_mask: numpy array of boolean as a vision mask
+        :return: numpy array
+        """
+        if vis_mask is None:
+            vis_mask = np.ones((self.width, self.height), dtype=bool)
+
+        assert vis_mask.shape == self.grid.shape
+
+        array = np.zeros((self.width, self.height, 2), dtype="uint8")  # TODO: enable variable length encoding?
+
+        for i in range(self.width):
+            for j in range(self.height):
+                if vis_mask[i, j]:
+                    v = self.get(i, j)
+                    if v is None:
+                        try:
+                            array[i, j, 0] = self._obj_2_idx[None], 0
+                        except KeyError:
+                            raise Grid.EncodingError("Empty grid cell encoding index not specified")
+                    if v is not None:
+                        try:
+                            array[i, j, 0] = self._obj_2_idx[v.__class__]
+                        except KeyError:
+                            raise Grid.EncodingError(f"Grid cell encoding index for {v.__class__} not specified")
+                        array[i, j, :] = v.encode()
+
+        return array
+
+    @classmethod
+    def decode(cls, array):
+        """
+        Decode an array grid encoding back into a grid using this grid encoding
+        :param array: an array grid encoded
+        :return: grid
+        """
+
+        width, height, channels = array.shape
+        assert channels == 2  # TODO: enable variable length encoding?
+
+        grid = cls(width, height)
+
+        for i in range(width):
+            for j in range(height):
+                type_idx, arg = array[i, j]
+                # TODO : continue
 
 
 class GridWorld(gym.Env):
@@ -195,13 +259,14 @@ class GridWorld(gym.Env):
         OBSTACLE = 0
         VISITED = 5
         OUT_OF_BOUNDS = 6
+        GOAL = 7
 
     class UnknownAction(Exception):
         """Raised when an agent try to do an unknown action"""
         pass
 
     def __init__(self, agents=None, grid=np.ones((5, 5)), partial_obs=False, width=5, height=5,
-                 col_wind=np.zeros((5,)), range_random_wind=0, probabilities=None):
+                 col_wind=None, range_random_wind=0, probabilities=None):
 
         if agents is None:
             agents = []
@@ -223,10 +288,12 @@ class GridWorld(gym.Env):
         self.observation_space = spaces.Box(low=0, high=1, shape=grid.shape, dtype='uint8')
 
         self.agents_initial_pos = [agent.pos for agent in self.agents]  # starting position of the agents on the grid
-        # self.agents_visited_cells = {agent: [] for agent in self.agents}  # initialise agents visited cells lists
 
         # Wind effects -- TODO: May need to be moved into the world object? or is it okay here?
         self.np_random, _ = self.seed()  # Seeding the random number generator
+
+        if col_wind is None:
+            col_wind = np.zeros((len(self.grid, )))
 
         self.col_wind = col_wind  # Static wind  (rightwards is positive)
 
@@ -236,9 +303,53 @@ class GridWorld(gym.Env):
         assert sum(self.probabilities) == 1
 
     def reset(self):
-        for agent in self.agents:
-            agent.reset()
-        # TODO: make it random later
+        # gen new grid
+        # TODO
+
+        # w, h = self.grid.shape
+        # free_cells = [(i, j) for i in range(w) for j in range(h) if self.grid[i, j] == self.GridLegend.FREE]
+
+        self.agents_initial_pos = [agent.init_pos for agent in self.agents]
+
+        # place agents
+        for i in range(len(self.agents)):
+            agent = self.agents[i]
+            # reset initial positions
+            if agent.init_pos is None:
+                # agent does not have a specified unique initial position
+                # assign random one
+                w, h = self.grid.shape
+                start = random.randrange(0, w), random.randrange(0, h)
+                while start in self.agents_initial_pos or self.grid[start] == self.GridLegend.OBSTACLE:
+                    # while the new start position is the same of another agents
+                    # or if the new start position is an obstacle
+                    # try another one
+                    # (should work fine for not too complex labyrinth or when there is not much agents and be faster
+                    # than going through the grid and removing the unavailable cells in such a case)
+                    start = random.randrange(0, w), random.randrange(0, h)
+                agent.pos = start
+                self.agents_initial_pos[i] = start
+            else:
+                agent.pos = agent.init_pos
+                self.agents_initial_pos[i] = agent.init_pos
+
+            # reset goals
+            if agent.init_goal is None:
+                # agent does not have a specified unique goal
+                # assign a random one
+                w, h = self.grid.shape
+                goal = random.randrange(0, w), random.randrange(0, h)
+                while goal == agent.pos or self.grid[goal] == self.GridLegend.OBSTACLE:
+                    # while the new goal position is an obstacle or the starting position of the agent
+                    # try another one
+                    # (should work fine for not too complex labyrinth or when there is not much agents and be faster
+                    # than going through the grid and removing the unavailable cells in such a case)
+                    goal = random.randrange(0, w), random.randrange(0, h)
+                agent.goal = goal
+            else:
+                agent.goal = agent.init_goal
+
+            agent.done = False
 
         # self.render()  # show the initial arrangement of the grid
 
@@ -393,13 +504,11 @@ class GridWorld(gym.Env):
         else:
             canvas = self.grid.copy()
 
-            # mark visited cells
-            # canvas[tuple(self.agents_visited_cells[agent])] = GridWorld.GridLegend.VISITED
+            for a in self.agents:
+                canvas[a.pos] = self.GridLegend.AGENT
 
-            # mark agents : here there is a risk of contradiction with visited cells
-            # canvas[(agent.pos for agent in self.agents)] = GridWorld.GridLegend.AGENT
-            for agent in self.agents:
-                canvas[agent.pos] = agent.id
+            # only mark the goal of the agent (not the ones of the others)
+            canvas[agent.goal] = self.GridLegend.GOAL
 
             return canvas
 
@@ -572,7 +681,7 @@ class GridWorld(gym.Env):
                        label="Policy")
             plt.title('Equivalent Greedy Policy')
 
-        plt.show()
+        # plt.show()
 
     def seed(self, seed=None):
         """Sets the seed for the environment to maintain consistency during training"""

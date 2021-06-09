@@ -25,8 +25,8 @@ class SoftQNetwork(nn.Module):
 
 class AgentSQN(AgentBase):
 
-    def __init__(self, i, init_pos, goal, window_size, device):
-        super().__init__(i, init_pos, goal, device)
+    def __init__(self, i, window_size, device, start=None, goal=None):
+        super().__init__(i, device, start, goal)
 
         # SQL stuff
         self.policy_model = SoftQNetwork(window_size=window_size, num_actions=len(self.actions)).to(self.device)

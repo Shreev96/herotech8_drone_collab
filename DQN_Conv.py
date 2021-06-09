@@ -45,9 +45,9 @@ class DQN(nn.Module):
 
 class AgentDQN(AgentBase):
 
-    def __init__(self, i, init_pos, goal, window_size, device):
+    def __init__(self, i, window_size, device, start=None, goal=None):
         # ID of the agent (represents the integer number to look for on the grid
-        super().__init__(i, init_pos, goal, device)
+        super().__init__(i, device, start, goal)
 
         # DQN stuff
 
@@ -76,10 +76,6 @@ class AgentDQN(AgentBase):
         # Optimizer
         self.optimizer = optim.SGD(self.policy_model.parameters(), lr=self.learning_rate)
         self.criterion = nn.SmoothL1Loss()
-
-    def reset(self):
-        super(AgentDQN, self).reset()
-        self.eps = 0.9
 
     def select_action(self, observation):
         if random.random() > self.eps:
