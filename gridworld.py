@@ -257,8 +257,8 @@ class GridWorld(gym.Env):
         FREE = 1
         AGENT = 2
         OBSTACLE = 0
-        VISITED = 5
-        OUT_OF_BOUNDS = 6
+        # VISITED = 5  # Commented out for now since it interferes with the conv-net input tensor
+        # OUT_OF_BOUNDS = 6  # Commented out for now since it interferes with the conv-net input tensor
         GOAL = 7
 
     class UnknownAction(Exception):
@@ -402,7 +402,7 @@ class GridWorld(gym.Env):
         # check for collisions with obstacles (statics and dynamics)
         # for now it only checks for obstacles and others agents but it could be generalized with
         # the definition of Cell objects : check if cell is empty or not
-        elif (self.grid[n, m] == GridWorld.GridLegend.OBSTACLE  # obstacles
+        elif (self.grid[n, m] == self.GridLegend.OBSTACLE  # obstacles
               or (n, m) in [self.agents[j].pos for j in range(len(self.agents)) if j != i]):  # other agents
             reward = -0.75
             illegal = True
@@ -477,16 +477,16 @@ class GridWorld(gym.Env):
 
         return obs, rewards, done, {}
 
-    def gen_obs(self):
+    def gen_obs(self, tensor=1):
         """Generate the observation"""
-        return [self._gen_obs_agent(agent) for agent in self.agents]
+        return [self._gen_obs_agent(agent, tensor) for agent in self.agents]
 
-    def _gen_obs_agent(self, agent):
+    def _gen_obs_agent(self, agent, tensor=1):
         """Generate the agent's view"""
         if self.partial_obs:
             x, y = agent.pos
             w, h = self.agent_view_width, self.agent_view_height
-            sub_grid = np.full((w, h), GridWorld.GridLegend.OUT_OF_BOUNDS)
+            sub_grid = np.full((w, h), self.GridLegend.OUT_OF_BOUNDS)
 
             # compute sub_grid corners
             top_x, top_y = x - w // 2, y - h // 2
@@ -509,6 +509,10 @@ class GridWorld(gym.Env):
 
             # only mark the goal of the agent (not the ones of the others)
             canvas[agent.goal] = self.GridLegend.GOAL
+
+            # Convert to len(dict)-dimensional tensor for Conv_SQN. Can turn on or off
+            if tensor == 1:
+                canvas = self.grid2tensor(canvas, agent)
 
             return canvas
 
@@ -689,3 +693,20 @@ class GridWorld(gym.Env):
         rn_gen, seed = seeding.np_random(seed)
 
         return rn_gen, seed
+
+    def grid2tensor(self, grid, agent):
+        """Function to convert the observation into a n-dimensional grid according to the dict. size
+         such that each grid has 1 at the position of the corresponding dict item. Needed for Conv_SQN"""
+
+        key_grids = []
+
+        for key in self.GridLegend:
+            idx = np.where(grid == key.value)
+            key_grid = np.zeros(grid.shape)
+            key_grid[idx] = 1
+            key_grids.append(key_grid)
+
+        obs = torch.Tensor(key_grids)
+        obs = obs.reshape(1, len(self.GridLegend), grid.shape[0], grid.shape[1]).to(agent.device)
+
+        return obs
