@@ -21,6 +21,15 @@ class AgentBase:
         up = 2
         down = 3
 
+    class GridLegend(IntEnum):
+        """ Replica of the version in the gridworld class. Needed to create the Conv-net"""
+        FREE = 1
+        AGENT = 2
+        OBSTACLE = 0
+        # VISITED = 5  # TODO: Commented now to help with creation of Convnet input
+        # OUT_OF_BOUNDS = 6  # TODO: Commented now to help with creation of Convnet input
+        GOAL = 7
+
     Transition = namedtuple('Transition',
                             ('state', 'action', 'reward', 'next_state', 'done'))
 
@@ -50,8 +59,14 @@ class AgentBase:
 
     def add_to_buffer(self, s, a, r, s_, done):
         """Save a transition in the experience replay memory"""
-        s = (torch.from_numpy(s).view(1, -1)).float()  # convert to float because DQN expect float and not double
-        s_ = (torch.from_numpy(s_).view(1, -1)).float()  # convert to float because DQN expect float and not double
+
+        # s = s.view(1, -1).float()
+        # s_ = s_.view(1, -1).float()
+
+        # Now, 'env.grid2tensor' produces tensor observations directly, so there is no need to cast
+        s = s.float()  # convert to float because Conv_SQN expects float and not double
+        s_ = s_.float()
+
         self.experience_replay.append(AgentBase.Transition(s, a, r, s_, done))
 
     def sample_buffer(self, batch_size):
