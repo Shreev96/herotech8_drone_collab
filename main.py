@@ -13,27 +13,22 @@ from gridworld import GridWorld
 from random_grid_generator import random_maze
 
 if __name__ == '__main__':
+
     # Model training parameters
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU
     # device = None
     steps = 100
     episodes = 500
     target_update = 10
-    start_position = (0, 0)
-    # init_grid = np.array([
-    #     [1., 1., 0., 1., 1.],
-    #     [1., 1., 1., 1., 0.],
-    #     [1., 1., 1., 1., 1.],
-    #     [0., 1., 1., 1., 1.],
-    #     [1., 1., 0., 1., 1.],
-    # ])
+    start = (0, 0)
 
     # init_grid = np.genfromtxt('sample_grid/init_grid.csv', delimiter=',')  # generate a grid from a csv file
-    init_grid = random_maze(width=6, height=6, complexity=1, density=1)
-    goal = (len(init_grid) - 1, len(init_grid) - 1)  # place goal in bottom-right corner
+    grid_size = 10  # Square grid size
+    goal = (grid_size - 1, grid_size - 1)  # place goal in bottom-right corner
+    init_grid = random_maze(start, goal, width=10, height=10, complexity=0.5, density=0.5)
 
     # create Agent : giving a start or goal position fix it, otherwise it is randomly generated at each reset
-    agent_1 = AgentSQN(2, window_size=init_grid.shape[0], device=device, start=start_position, goal=goal)
+    agent_1 = AgentSQN(2, window_size=init_grid.shape[0], device=device, start=start, goal=goal)
     # agent_1 = AgentSQN(2, window_size=5, device=device)
     # agent_1 = AgentSQN(2, window_size=5, device=device, start=start_position)
     # agent_1 = AgentSQN(2, window_size=5, device=device, goal=goal)
@@ -41,10 +36,10 @@ if __name__ == '__main__':
     # # Ordinary gridworld
     env = GridWorld(agents=[agent_1], grid=init_grid)
 
-    # Stochastic windy gridworld
-    wind = [0, 1, 1, 0, 0]  # Row-wise wind addition towards the right (increasing col. idx)
-    range_random_wind = 1
-    probabilities = [0.2, 0.3, 0.5]  # [-1, 0, 1] noise added to wind-related position updates
+    # # Stochastic windy gridworld
+    # wind = [0, 1, 1, 0, 0]  # Row-wise wind addition towards the right (increasing col. idx)
+    # range_random_wind = 1
+    # probabilities = [0.2, 0.3, 0.5]  # [-1, 0, 1] noise added to wind-related position updates
 
     # env = GridWorld(agents=[agent_1], grid=init_grid, col_wind=wind,
     #                 range_random_wind=range_random_wind, probabilities=probabilities)
@@ -118,7 +113,6 @@ if __name__ == '__main__':
     # U, V = env.greedy_det_policy(v_values, 0)  # U and V are x and y unit vectors respectively
     # env.render(policy=True, u=U, v=V)
     # plt.show()
-
 
     # create gif of the result
     filenames = []
