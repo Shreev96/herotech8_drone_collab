@@ -170,3 +170,11 @@ class AgentSQN(AgentBase):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+
+    def save(self, path):
+        torch.save(self.policy_model.state_dict(), path)
+
+    def load(self, path):
+        self.policy_model.load_state_dict(torch.load(path))
+        self.target_model.load_state_dict(self.policy_model.state_dict())
+

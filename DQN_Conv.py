@@ -143,3 +143,10 @@ class AgentDQN(AgentBase):
 
     def __eq__(self, other):
         return self.id == other.id
+
+    def save(self, path):
+        torch.save(self.policy_model.state_dict(), path)
+
+    def load(self, path):
+        self.policy_model.load_state_dict(torch.load(path))
+        self.target_model.load_state_dict(self.policy_model.state_dict())

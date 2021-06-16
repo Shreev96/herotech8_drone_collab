@@ -84,3 +84,11 @@ class AgentBase:
     def train(self):
         """Perform a single step of the optimization"""
         raise NotImplementedError("Must implement this method")
+
+    def save(self, path):
+        """Save the state of the model"""
+        raise NotImplementedError("Must implement this method")
+
+    def load(self, path):
+        """Load the parameter of the model from a file"""
+        raise NotImplementedError("Must implement this method")
