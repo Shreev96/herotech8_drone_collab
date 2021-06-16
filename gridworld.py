@@ -1,3 +1,5 @@
+import configparser
+import datetime
 import random
 from enum import IntEnum
 from typing import Tuple, Dict, Optional
@@ -21,6 +23,11 @@ class WorldObj:  # not used yet
 
     def __init__(self):
         self.pos = None
+        self._observable = True
+
+    @property
+    def observable(self):
+        return self._observable
 
     def encode(self) -> Tuple[int, ...]:
         """Encode the description of this object"""
@@ -212,11 +219,18 @@ class Grid:  # not used yet
                         except KeyError:
                             raise Grid.EncodingError("Empty grid cell encoding index not specified")
                     if v is not None:
-                        try:
-                            array[i, j, 0] = self._obj_2_idx[v.__class__]
-                        except KeyError:
-                            raise Grid.EncodingError(f"Grid cell encoding index for {v.__class__} not specified")
-                        array[i, j, :] = v.encode()
+                        if v.observable:
+                            try:
+                                array[i, j, 0] = self._obj_2_idx[None], 0
+                            except KeyError:
+                                raise Grid.EncodingError("Empty grid cell encoding index not specified for "
+                                                         "unobservable object")
+                        else:
+                            try:
+                                array[i, j, 0] = self._obj_2_idx[v.__class__]
+                            except KeyError:
+                                raise Grid.EncodingError(f"Grid cell encoding index for {v.__class__} not specified")
+                            array[i, j, :] = v.encode()
 
         return array
 
@@ -302,9 +316,20 @@ class GridWorld(gym.Env):
         self.probabilities = probabilities  # Stochasticity implemented through noise
         assert sum(self.probabilities) == 1
 
-    def reset(self):
+        self.step_count = 0
+        self.max_steps = 100
+
+        self.rewards = {"free": -0.04,
+                        "obstacles": -0.75,
+                        "goal": 10.0,
+                        "out_of_bounds": -0.8}
+
+    def reset(self, init_grid=None, starts=None, goals=None):
+        # TODO : IMPROVE
         # gen new grid
         # TODO
+        if init_grid is not None:
+            self.grid = init_grid
 
         # w, h = self.grid.shape
         # free_cells = [(i, j) for i in range(w) for j in range(h) if self.grid[i, j] == self.GridLegend.FREE]
@@ -312,46 +337,60 @@ class GridWorld(gym.Env):
         self.agents_initial_pos = [agent.init_pos for agent in self.agents]
 
         # place agents
-        for i in range(len(self.agents)):
-            agent = self.agents[i]
-            # reset initial positions
-            if agent.init_pos is None:
-                # agent does not have a specified unique initial position
-                # assign random one
-                w, h = self.grid.shape
-                start = random.randrange(0, w), random.randrange(0, h)
-                while start in self.agents_initial_pos or self.grid[start] == self.GridLegend.OBSTACLE:
-                    # while the new start position is the same of another agents
-                    # or if the new start position is an obstacle
-                    # try another one
-                    # (should work fine for not too complex labyrinth or when there is not much agents and be faster
-                    # than going through the grid and removing the unavailable cells in such a case)
+        if starts is None:
+            for i in range(len(self.agents)):
+                agent = self.agents[i]
+                # reset initial positions
+                if agent.init_pos is None:
+                    # agent does not have a specified unique initial position
+                    # assign random one
+                    w, h = self.grid.shape
                     start = random.randrange(0, w), random.randrange(0, h)
-                agent.pos = start
-                self.agents_initial_pos[i] = start
-            else:
-                agent.pos = agent.init_pos
-                self.agents_initial_pos[i] = agent.init_pos
+                    while start in self.agents_initial_pos or self.grid[start] == self.GridLegend.OBSTACLE:
+                        # while the new start position is the same of another agents
+                        # or if the new start position is an obstacle
+                        # try another one
+                        # (should work fine for not too complex labyrinth or when there is not much agents and be faster
+                        # than going through the grid and removing the unavailable cells in such a case)
+                        start = random.randrange(0, w), random.randrange(0, h)
+                    agent.pos = start
+                    self.agents_initial_pos[i] = start
+                else:
+                    agent.pos = agent.init_pos
+                    self.agents_initial_pos[i] = agent.init_pos
+        else:
+            for i in range(len(self.agents)):
+                self.agents[i].pos = starts[i]
+                self.agents_initial_pos[i] = starts[i]
 
             # reset goals
-            if agent.init_goal is None:
-                # agent does not have a specified unique goal
-                # assign a random one
-                w, h = self.grid.shape
-                goal = random.randrange(0, w), random.randrange(0, h)
-                while goal == agent.pos or self.grid[goal] == self.GridLegend.OBSTACLE:
-                    # while the new goal position is an obstacle or the starting position of the agent
-                    # try another one
-                    # (should work fine for not too complex labyrinth or when there is not much agents and be faster
-                    # than going through the grid and removing the unavailable cells in such a case)
+        if goals is None:
+            for i in range(len(self.agents)):
+                agent = self.agents[i]
+                if agent.init_goal is None:
+                    # agent does not have a specified unique goal
+                    # assign a random one
+                    w, h = self.grid.shape
                     goal = random.randrange(0, w), random.randrange(0, h)
-                agent.goal = goal
-            else:
-                agent.goal = agent.init_goal
+                    while goal == agent.pos or self.grid[goal] == self.GridLegend.OBSTACLE:
+                        # while the new goal position is an obstacle or the starting position of the agent
+                        # try another one
+                        # (should work fine for not too complex labyrinth or when there is not much agents and be faster
+                        # than going through the grid and removing the unavailable cells in such a case)
+                        goal = random.randrange(0, w), random.randrange(0, h)
+                    agent.goal = goal
+                else:
+                    agent.goal = agent.init_goal
+        else:
+            for i in range(len(self.agents)):
+                self.agents[i].goal = goals[i]
 
+        for agent in self.agents:
             agent.done = False
 
         # self.render()  # show the initial arrangement of the grid
+
+        self.step_count = 0
 
         # return first observation
         return self.gen_obs()
@@ -395,7 +434,7 @@ class GridWorld(gym.Env):
 
         # check for out of bounds
         if not (0 <= n < self.grid.shape[0] and 0 <= m < self.grid.shape[1]):
-            reward = -0.8
+            reward = self.rewards["out_of_bounds"]
             # agent.done = True
             illegal = True
 
@@ -404,28 +443,24 @@ class GridWorld(gym.Env):
         # the definition of Cell objects : check if cell is empty or not
         elif (self.grid[n, m] == self.GridLegend.OBSTACLE  # obstacles
               or (n, m) in [self.agents[j].pos for j in range(len(self.agents)) if j != i]):  # other agents
-            reward = -0.75
+            reward = self.rewards["obstacles"]
             illegal = True
             # agent.done = True
 
         # check if agent reached its goal
         # (does each agent have a specific goal? If yes, is it an attribute of the class Agent?)
         elif (n, m) == agent.goal:
-            reward = 1.0
+            reward = self.rewards["goal"]
             agent.done = True
-
-        # # penalize for visiting previously visited cells
-        # elif (n, m) in self.agents_visited_cells[i]:
-        #     reward = -0.5
 
         # penalise the agent for extra moves
         else:
-            reward = -0.04
-            # self.agents_visited_cells[agent].append((n, m))
+            reward = self.rewards["free"]
 
         return reward, illegal
 
     def step(self, actions):
+        self.step_count += 1
 
         assert len(actions) == len(self.agents), "number of actions must be equal to number of agents"
 
@@ -706,7 +741,21 @@ class GridWorld(gym.Env):
             key_grid[idx] = 1
             key_grids.append(key_grid)
 
-        obs = torch.Tensor(key_grids)
-        obs = obs.reshape(1, len(self.GridLegend), grid.shape[0], grid.shape[1]).to(agent.device)
+        obs = torch.Tensor(key_grids).to(agent.device)
+        obs = obs.reshape(1, len(self.GridLegend), grid.shape[0], grid.shape[1])
 
         return obs
+
+    def save(self, directory):
+        now = datetime.datetime.now()
+        for agent in self.agents:
+            agent.save(f"{directory}/{now.strftime('%Y%m%d%H%M%S')}_{agent.id}.pt")
+
+    def read_reward_config(self, config_file):
+        config = configparser.ConfigParser()
+        config.read(config_file)
+        grid_param = config["Gridworld Parameters"]
+        self.rewards["free"] = grid_param.getfloat("FREE", self.rewards["free"])
+        self.rewards["goal"] = grid_param.getfloat("GOAL", self.rewards["goal"])
+        self.rewards["obstacles"] = grid_param.getfloat("OBSTACLE", self.rewards["obstacles"])
+        self.rewards["out_of_bounds"] = grid_param.getfloat("OUT_OF_BOUNDS", self.rewards["out_of_bounds"])

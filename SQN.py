@@ -1,3 +1,5 @@
+import configparser
+
 import torch
 import torch.nn as nn
 from torch import optim
@@ -88,21 +90,26 @@ class AgentSQN(AgentBase):
                                      window_size=window_size, num_actions=len(self.actions)).to(self.device)
 
         self.target_model.load_state_dict(self.policy_model.state_dict())
+        self.target_model.eval()
+
+        config = configparser.ConfigParser()
+        config.read("config.ini")
+        params = config["SQN Parameters"]
 
         # Entropy weighting
-        self.alpha = 0.01
+        self.alpha = params.getfloat("alpha")
 
         # Batch size
-        self.batch_size = 128
+        self.batch_size = params.getint("batch_size")
 
         # Learning rate for the Q table update equation
-        self.learning_rate = 0.01
+        self.learning_rate = params.getfloat("learning_rate")
 
         # Discount factor for the Q-table update equation
-        self.discount_factor = 0.99
+        self.discount_factor = params.getfloat("discount_factor")
 
         # Step delay before target_model update
-        self.update_steps = 10  # Could also use 2
+        self.update_steps = params.getint("update_period")
         self._learned_steps = 0
 
         self.optimizer = optim.Adam(self.policy_model.parameters(), lr=self.learning_rate)
@@ -110,7 +117,8 @@ class AgentSQN(AgentBase):
     def select_action(self, observation):
 
         # Shape of observation is (N_batch, Channels_in, Height, Width)
-        observation = torch.FloatTensor(observation).to(self.device)  # No longer need to flatten it
+        # observation = torch.FloatTensor(observation).to(self.device)  # No longer need to flatten it
+        observation = observation.float()
 
         with torch.no_grad():
             # Compute soft Action-Value Q values
@@ -141,7 +149,7 @@ class AgentSQN(AgentBase):
         batch = AgentBase.Transition(*zip(*transitions))
 
         state_batch = torch.cat(batch.state).to(self.device)
-        action_batch = torch.cat(batch.action).to(self.device)
+        action_batch = torch.cat(batch.action).unsqueeze(1).to(self.device)
         reward_batch = torch.cat(batch.reward).unsqueeze(1).to(self.device)
 
         # Compute a mask of non-final states and concatenate the batch elements
@@ -150,8 +158,8 @@ class AgentSQN(AgentBase):
         non_final_next_states = torch.cat(batch.next_state)[non_final_mask].to(self.device)
 
         # Compute Q(s_t, a)
-        state_action_values = self.policy_model(state_batch)\
-            .gather(1, action_batch.long().reshape(len(action_batch), 1))
+        state_action_values = self.policy_model(state_batch) \
+            .gather(1, action_batch.long())
 
         # Compute the expected values
         with torch.no_grad():

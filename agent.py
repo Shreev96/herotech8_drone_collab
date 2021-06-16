@@ -2,12 +2,6 @@ import random
 from collections import namedtuple, deque
 from enum import IntEnum
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from torch.distributions import Categorical
-
 
 class AgentBase:
     """
@@ -51,7 +45,6 @@ class AgentBase:
         self.actions = AgentBase.Actions
 
         # DRL stuff
-        self.max_buffer_size = 100
         self.experience_replay = deque([], maxlen=10000)
 
         # PyTorch stuff
