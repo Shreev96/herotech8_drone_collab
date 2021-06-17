@@ -1,5 +1,4 @@
 import configparser
-import datetime
 import random
 from enum import IntEnum
 from typing import Tuple, Dict, Optional
@@ -268,7 +267,7 @@ class GridWorld(gym.Env):
         down = 3
 
     class GridLegend(IntEnum):
-        FREE = 1
+        # FREE = 1
         AGENT = 2
         OBSTACLE = 0
         # VISITED = 5  # Commented out for now since it interferes with the conv-net input tensor
@@ -736,7 +735,7 @@ class GridWorld(gym.Env):
         key_grids = []
 
         for key in self.GridLegend:
-            idx = np.where(grid == key.value)
+            idx = np.where(grid == key)
             key_grid = np.zeros(grid.shape)
             key_grid[idx] = 1
             key_grids.append(key_grid)
@@ -746,10 +745,9 @@ class GridWorld(gym.Env):
 
         return obs
 
-    def save(self, directory):
-        now = datetime.datetime.now()
+    def save(self, directory, datetime):
         for agent in self.agents:
-            agent.save(f"{directory}/{now.strftime('%Y%m%d%H%M%S')}_{agent.id}.pt")
+            agent.save(f"{directory}/{datetime}_{agent.id}.pt")
 
     def read_reward_config(self, config_file):
         config = configparser.ConfigParser()

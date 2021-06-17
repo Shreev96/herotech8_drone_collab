@@ -1,6 +1,7 @@
 import os
 import time
 import configparser
+from datetime import datetime
 
 import imageio as imageio
 import matplotlib.pyplot as plt
@@ -48,6 +49,67 @@ def read_agents_config(config_file):
         raise NotImplementedError
 
 
+def create_gif(filename, env, init_grid, steps=100, epidodes=1):
+    """ render result and create gif of the result"""
+    filenames = []
+    fig = plt.figure()
+    plt.ion()
+    grid_size = len(env.grid)
+
+    for episode in range(epidodes):
+        start, goal = random_start_end(width=grid_size, start_bounds=((0, grid_size // 2), (0, grid_size)),
+                                       goal_bounds=((grid_size // 2, grid_size), (0, grid_size)))
+        obs = env.reset(init_grid=init_grid, starts=[start], goals=[goal])
+        for step in range(steps):
+            env.render()
+            plt.savefig(f'images/gif_frame/E{episode:03}S{step:05}.png')
+            plt.imsave
+            plt.cla()
+
+            # filenames.append(f'images/gif_frame/E{episode:03}S{step:05}.png')
+            actions = [env.agents[i].select_action(obs[i]) for i in range(len(env.agents))]
+            obs, rewards, done, info = env.step(actions)
+            if done:
+                break
+        print(f"Episode finished after {step + 1} time steps")
+    env.render()
+    plt.savefig(f'images/gif_frame/final.png')
+    plt.cla()
+    filenames.append(f'images/gif_frame/final.png')
+    plt.ioff()
+
+    with imageio.get_writer(f'images/gif/{filename}.gif', mode='I') as writer:
+        for filename in filenames:
+            image = imageio.imread(filename)
+            writer.append_data(image)
+            # TODO : try to save fig as numpy array to preserve data and speed up the rendering
+
+    for filename in set(filenames):
+        os.remove(filename)
+
+
+def create_gif2(filename, env, init_grid, steps=100, epidodes=1):
+    """ render result and create gif of the result"""
+    fig = plt.figure()
+    grid_size = len(env.grid)
+    with imageio.get_writer(f'images/gif/{filename}.gif', mode='I') as writer:
+        for episode in range(epidodes):
+            start, goal = random_start_end(width=grid_size, start_bounds=((0, grid_size // 2), (0, grid_size)),
+                                           goal_bounds=((grid_size // 2, grid_size), (0, grid_size)))
+            obs = env.reset(init_grid=init_grid, starts=[start], goals=[goal])
+            for step in range(steps):
+                env.render()
+                fig.canvas.draw()
+                data = np.asarray(fig.canvas.buffer_rgba())
+                writer.append_data(data)
+
+                actions = [env.agents[i].select_action(obs[i]) for i in range(len(env.agents))]
+                obs, rewards, done, info = env.step(actions)
+                if done:
+                    break
+            print(f"Episode finished after {step + 1} time steps")
+
+
 if __name__ == '__main__':
     print(DEVICE)
 
@@ -68,8 +130,8 @@ if __name__ == '__main__':
     ####################
     # start = (0, 0)
     # goal = (grid_size - 1, grid_size - 1)  # place goal in bottom-right corner
-    start, goal = random_start_end(width=grid_size, start_bounds=((0, grid_size//2), (0, grid_size)),
-                                   goal_bounds=((grid_size//2, grid_size), (0, grid_size)))
+    start, goal = random_start_end(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
+                                   goal_bounds=((grid_size-1, grid_size), (0, grid_size)))
 
     ###################
     # AGENTS CREATION #
@@ -110,7 +172,6 @@ if __name__ == '__main__':
         print(f"First start is {start} and first goal is {goal}")
         env.render()
         plt.show()
-
 
         start_time = time.time()
         for episode in range(episodes):
@@ -159,21 +220,24 @@ if __name__ == '__main__':
     except Exception as e:
         raise e
     finally:
-        env.save(directory="logs")
+        now = datetime.now()
 
-    reward_fig = plt.figure(1)
-    plt.title("Cumulated Reward")
-    plt.xlabel("Epochs")
-    plt.plot(cum_rewards)
-    plt.show()
+        env.save(directory="logs/models", datetime=now.strftime('%Y%m%d%H%M%S'))
 
-    steps_fig = plt.figure(2)
-    plt.title("Total steps")
-    plt.xlabel("Epochs")
-    plt.plot(total_steps)
-    plt.show()
+        plt.clf()
+        plt.title("Cumulated Reward")
+        plt.xlabel("Epochs")
+        plt.plot(cum_rewards)
+        plt.savefig(f"logs/cumulated_rewards/{now.strftime('%Y%m%d%H%M%S')}.png")
+        plt.clf()
 
-    plt.figure()
+        plt.title("Total steps")
+        plt.xlabel("Epochs")
+        plt.plot(total_steps)
+        plt.savefig(f"logs/total_steps/{now.strftime('%Y%m%d%H%M%S')}.png")
+        plt.clf()
+
+    # plt.figure()
     # # evaluate value function for agent 1 (id = 0) and display
     # v_values = env.eval_value_func(0)
     # env.render(value_func=True, v_values=v_values)
@@ -184,36 +248,8 @@ if __name__ == '__main__':
     # env.render(policy=True, u=U, v=V)
     # plt.show()
 
-    # render result
-    # create gif of the result
-    filenames = []
-    plt.ion()
-    for episode in range(1):
-        start, goal = random_start_end(width=grid_size, start_bounds=((0, grid_size // 2), (0, grid_size)),
-                                       goal_bounds=((grid_size // 2, grid_size), (0, grid_size)))
-        obs = env.reset(init_grid=init_grid, starts=[start], goals=[goal])
-        for step in range(steps):
-            env.render()
-            plt.savefig(f'images/gif_frame/E{episode:03}S{step:05}.png')
-            plt.cla()
+    start_time = time.time()
+    create_gif("test", env, init_grid, steps=10, epidodes=3)
+    print(time.time()-start_time)
 
-            filenames.append(f'images/gif_frame/E{episode:03}S{step:05}.png')
-            actions = [env.agents[i].select_action(obs[i]) for i in range(len(env.agents))]
-            obs, rewards, done, info = env.step(actions)
-            if done:
-                print(f"Episode final finished after {step + 1} time steps")
-                break
-    env.render()
-    plt.savefig(f'images/gif_frame/final.png')
-    plt.show()
-    filenames.append(f'images/gif_frame/final.png')
     env.close()
-    plt.ioff()
-
-    with imageio.get_writer('images/gif/simple.gif', mode='I') as writer:
-        for filename in filenames:
-            image = imageio.imread(filename)
-            writer.append_data(image)
-
-    for filename in set(filenames):
-        os.remove(filename)
