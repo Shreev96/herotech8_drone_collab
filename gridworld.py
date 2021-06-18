@@ -550,39 +550,61 @@ class GridWorld(gym.Env):
 
             return canvas
 
-    def eval_value_func(self, agent_id):
+    def eval_value_func(self, agent_id, model):
         """Function to evaluate the value of each position in the grid,
         given a unique agent ID (context for values)"""
 
-        # Simulate observations from each free space in the grid
-        # 'obs' is typically a 5 x 5 numpy array (for now)
-        free_spaces = np.where(self.grid[:, :] == self.GridLegend.FREE)  # returns are row and cols in a tuple
-        obstacle_spaces = np.where(self.grid[:, :] == self.GridLegend.OBSTACLE)  # returns are row and cols in a tuple
-        row = free_spaces[0]
-        col = free_spaces[1]
-        grid = deepcopy(self.grid)  # Copy over current position of grid (immediately after reset)
-        grid_backup = deepcopy(self.grid)  # Backup for resetting the agent position
-        v_values = np.zeros_like(grid)  # Obstacles will have a large negative value
+        # Consider the value function for the selected action only
         agent = self.agents[agent_id]
 
+        # Create grid template (only determines the size)
+        grid = deepcopy(self.grid)  # Copy over current position of grid (immediately after reset)
+
+        # Goal space is fixed
+        grid[agent.goal] = self.GridLegend.GOAL
+
+        # Backup for resetting the agent position
+        grid_backup = deepcopy(grid)
+
+        # Free spaces
+        free_spaces = np.where(grid[:, :] == 1)  # returns are row and cols in a tuple ('1' is used for free cells)
+        row = free_spaces[0]
+        col = free_spaces[1]
+
+        # Obstacle spaces
+        obstacle_spaces = np.where(grid[:, :] == self.GridLegend.OBSTACLE)  # returns are row and cols in a tuple
+
+        # Initialize the value function
+        v_values = np.zeros_like(grid)  # Obstacles will have a large negative value
+
+        # Move the agent to different positions on the grid and find the value function of that positions
         for ii in range(len(row)):
             n = row[ii]
             m = col[ii]
 
             grid[n, m] = self.GridLegend.AGENT  # Set agent current position
 
-            observation = torch.FloatTensor(grid).view(1, -1).to(agent.device)
+            canvas = grid.copy()
+
+            observation = self.grid2tensor(canvas, self.agents[0]).to(self.agents[0].device)
+
             with torch.no_grad():
-                # Compute soft Action-Value Q values
-                q_values = agent.policy_model(observation)
-                # Compute soft-Value V value of the agent being in that position
-                value = agent.alpha * torch.logsumexp(q_values / agent.alpha, dim=1, keepdim=True)
-                v_values[n, m] = value.cpu().detach().numpy()
+
+                if model == 'SQN':
+                    # Compute 'soft' Q values
+                    q_values = agent.policy_model(observation)
+                    # Compute soft-Value V value of the agent being in that position
+                    value = agent.alpha * torch.logsumexp(q_values / agent.alpha, dim=1, keepdim=True)
+                    v_values[n, m] = value.cpu().detach().numpy()
+
+                elif model == 'DQN':
+                    # Compute DQN Q-values -> Maximisation over the Q values at any state state (Bellman Eqn.)
+                    v_values[n, m] = agent.policy_model(observation).max(1)[0]
 
             grid = deepcopy(grid_backup)  # Reset grid (erase agent current position)
 
         # Make sure the goal state is a sink (largest V value)
-        v_values[agent.goal] = np.amax(v_values) + 0.5
+        v_values[agent.goal] = min(np.amax(v_values) + 0.5, np.amax(v_values)*2)
 
         # Setting the obstacle V values to the lowest
         row = obstacle_spaces[0]
@@ -595,8 +617,20 @@ class GridWorld(gym.Env):
 
             v_values[n, m] = min_
 
-        # # Normalize V values
-        # v_values = v_values/np.amax(v_values)
+        # Shift all values to greater than 0
+        min_ = np.amin(v_values)
+
+        if min_ < 0:
+
+            # Shift all values upwards by min_
+            v_values -= min_
+
+            # Reset the value of the goal state to prevent overpowering of value
+            v_values[agent.goal] = 0
+            v_values[agent.goal] = min(np.amax(v_values) + 0.5, np.amax(v_values) * 2)
+
+        # Min-max scaling of V values (applicable only to all positive values)
+        v_values = (v_values - np.amin(v_values))/(np.amax(v_values) - np.amin(v_values))
 
         return v_values
 
@@ -678,8 +712,9 @@ class GridWorld(gym.Env):
                 # mark the terminal states in 0.9 gray
                 canvas[agent.goal] = 0.9
 
-                # mark the current position in 0.3 gray
-                canvas[agent.pos] = 0.3
+                if not policy:
+                    # mark the current position in 0.3 gray
+                    canvas[agent.pos] = 0.3
 
             if mode == "human":
                 plt.grid("on")
@@ -711,7 +746,7 @@ class GridWorld(gym.Env):
             plt.grid()
 
             if not policy:
-                plt.title("Value function map using SQN")
+                plt.title("Value function map")
 
         if policy:
 
