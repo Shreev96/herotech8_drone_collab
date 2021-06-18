@@ -1,80 +1,13 @@
 import configparser
 
 import torch
-import torch.nn as nn
 from torch import optim
 from torch.distributions import Categorical
 import torch.nn.functional as F
 
 from agent import AgentBase
 
-
-class SQN(nn.Module):
-    """Simple DNN"""
-
-    def __init__(self, window_size, num_actions):
-        super(SQN, self).__init__()
-        # Note that the input to the NN is the flattened tensor of the grid state (here, 1 x window_size ** 2)
-        self.fc1 = nn.Linear(window_size ** 2, 64)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(64, 256)
-        self.fc3 = nn.Linear(256, num_actions)
-
-    def forward(self, x):
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
-
-
-class Conv_SQN(nn.Module):
-    # Convolutional version of the SQN
-
-    def __init__(self, window_size, num_actions, device, dict_size):
-
-        super(Conv_SQN, self).__init__()
-
-        self.window_size = window_size  # (square root) Size of the grid that the network sees
-        self.device = device
-
-        self.kernel_size = (3, 3)  # Square kernel
-        self.stride = (1, 1)  # Equal and continuous stride size due to small grid
-
-        self.conv1 = nn.Conv2d(dict_size, dict_size*2, kernel_size=self.kernel_size, stride=self.stride)
-        self.conv2 = nn.Conv2d(dict_size*2, 32, kernel_size=self.kernel_size, stride=self.stride)
-
-        def conv2d_size_out(shape, kernel_size=(3, 3), stride=(1, 1)):
-            """Size of array after convolution(s). Refer to Pytorch website"""
-
-            h = (shape[0] - (kernel_size[0] - 1) - 1)//stride[0] + 1  # height of convolved array
-            w = (shape[1] - (kernel_size[1] - 1) - 1)//stride[1] + 1  # width of convolved array
-
-            shape_out = (h, w)
-
-            return shape_out
-
-        # Apply twice since 2x filtering stages
-        conv_size = conv2d_size_out(conv2d_size_out((window_size, window_size), self.kernel_size, self.stride),
-                                    self.kernel_size, self.stride)
-
-        linear_input_size = conv_size[0] * conv_size[1] * 32  # 32 is the filter dimension
-
-        # Linear layer to convert the convolved grid to actions
-        self.head = nn.Linear(linear_input_size, num_actions)
-
-    # Called with either one element to determine next action, or a batch
-    # during optimization. Returns tensor([[left0exp,right0exp]...]).
-    def forward(self, x):
-
-        # x = x.to(self.device)
-        # x = torch.unsqueeze(x, 1)  # Add a batch dimension
-
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-
-        x = x.view(x.shape[0], -1)  # Equivalent to flattening the tensor
-
-        return self.head(x)  # Returning the 'Q' values for each of the possible actions
+from NN import Conv2D_NN
 
 
 class AgentSQN(AgentBase):
@@ -83,11 +16,11 @@ class AgentSQN(AgentBase):
         super().__init__(i, device, start, goal)
 
         # SQL stuff
-        self.policy_model = Conv_SQN(device=self.device, dict_size=len(self.GridLegend),
-                                     window_size=window_size, num_actions=len(self.actions)).to(self.device)
+        self.policy_model = Conv2D_NN(device=self.device, dict_size=len(self.GridLegend),
+                                      window_size=window_size, num_actions=len(self.actions)).to(self.device)
 
-        self.target_model = Conv_SQN(device=self.device, dict_size=len(self.GridLegend),
-                                     window_size=window_size, num_actions=len(self.actions)).to(self.device)
+        self.target_model = Conv2D_NN(device=self.device, dict_size=len(self.GridLegend),
+                                      window_size=window_size, num_actions=len(self.actions)).to(self.device)
 
         self.target_model.load_state_dict(self.policy_model.state_dict())
         self.target_model.eval()
@@ -185,4 +118,3 @@ class AgentSQN(AgentBase):
     def load(self, path):
         self.policy_model.load_state_dict(torch.load(path))
         self.target_model.load_state_dict(self.policy_model.state_dict())
-
