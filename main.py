@@ -55,7 +55,6 @@ def read_agents_config(config_file):
 
 
 def read_env_config(config_file):
-
     # Environmental conditions to be considered
 
     config = configparser.ConfigParser(allow_no_value=True)
@@ -69,14 +68,14 @@ def read_env_config(config_file):
     return col_wind, range_random_wind, probabilities
 
 
-def create_gif(filename, env, init_grid, steps=100, epidodes=1):
+def create_gif(filename, env, init_grid, steps=100, episodes=1):
     """ render result and create gif of the result"""
     filenames = []
     fig = plt.figure()
     plt.ion()
     grid_size = len(env.grid)
 
-    for episode in range(epidodes):
+    for episode in range(episodes):
         start, goal = random_start_end(width=grid_size, start_bounds=((0, grid_size // 2), (0, grid_size)),
                                        goal_bounds=((grid_size // 2, grid_size), (0, grid_size)))
         obs = env.reset(init_grid=init_grid, starts=[start], goals=[goal])
@@ -108,12 +107,12 @@ def create_gif(filename, env, init_grid, steps=100, epidodes=1):
         os.remove(filename)
 
 
-def create_gif2(filename, env, init_grid, steps=100, epidodes=1):
+def create_gif2(filename, env, init_grid, steps=100, episodes=1):
     """ render result and create gif of the result"""
     fig = plt.figure()
     grid_size = len(env.grid)
     with imageio.get_writer(f'images/gif/{filename}.gif', mode='I') as writer:
-        for episode in range(epidodes):
+        for episode in range(episodes):
             start, goal = random_start_end(width=grid_size, start_bounds=((0, grid_size // 2), (0, grid_size)),
                                            goal_bounds=((grid_size // 2, grid_size), (0, grid_size)))
             obs = env.reset(init_grid=init_grid, starts=[start], goals=[goal])
@@ -130,16 +129,16 @@ def create_gif2(filename, env, init_grid, steps=100, epidodes=1):
             print(f"Episode finished after {step + 1} time steps")
 
 
-if __name__ == '__main__':
+def main(config_file):
     print(DEVICE)
 
-    steps, episodes, train_period, start_goal_reset_period, effects = read_config("config.ini")
+    steps, episodes, train_period, start_goal_reset_period, effects = read_config(config_file)
     step_done = 0
 
     #################
     # GRID CREATION #
     #################
-    grid_size = read_grid_config("config.ini")  # Square grid size
+    grid_size = read_grid_config(config_file)  # Square grid size
 
     # init_grid = np.genfromtxt('sample_grid/init_grid.csv', delimiter=',')  # generate a grid from a csv file
     # init_grid = random_maze(start, goal, width=grid_size, height=grid_size, complexity=0.5, density=0.5)
@@ -151,7 +150,7 @@ if __name__ == '__main__':
     # start = (0, 0)
     # goal = (grid_size - 1, grid_size - 1)  # place goal in bottom-right corner
     start, goal = random_start_end(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
-                                   goal_bounds=((grid_size-1, grid_size), (0, grid_size)))
+                                   goal_bounds=((grid_size - 1, grid_size), (0, grid_size)))
 
     ###################
     # AGENTS CREATION #
@@ -161,7 +160,7 @@ if __name__ == '__main__':
     # agent_1 = AgentSQN(2, window_size=grid_size, device=DEVICE)
     # agent_1 = AgentSQN(2, window_size=5, device=device, start=start_position)
     # agent_1 = AgentSQN(2, window_size=5, device=device, goal=goal)
-    agents, model = read_agents_config("config.ini")
+    agents, model = read_agents_config(config_file)
 
     #######################
     # GRIDWORLDS CREATION #
@@ -172,11 +171,11 @@ if __name__ == '__main__':
 
     else:
         # Stochastic windy gridworld
-        col_wind, range_random_wind, probabilities = read_env_config("config.ini")
+        col_wind, range_random_wind, probabilities = read_env_config(config_file)
         env = GridWorld(agents=agents, grid=init_grid, col_wind=col_wind,
                         range_random_wind=range_random_wind, probabilities=probabilities)
 
-    env.read_reward_config("config.ini")
+    env.read_reward_config(config_file)
 
     ########
     # MAIN #
@@ -283,8 +282,10 @@ if __name__ == '__main__':
         env.render(policy=True, u=U, v=V)
         plt.show()
 
-    start_time = time.time()
-    create_gif("test", env, init_grid, steps=10, epidodes=3)
-    print(time.time()-start_time)
+    # create_gif("test", env, init_grid, steps=10, episodes=3)
 
     env.close()
+
+
+if __name__ == '__main__':
+    main("config.ini")
