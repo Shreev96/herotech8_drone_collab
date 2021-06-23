@@ -76,16 +76,16 @@ def create_gif(filename, env, init_grid, steps=100, episodes=1):
     grid_size = len(env.grid)
 
     for episode in range(episodes):
-        start, goal = random_start_end(width=grid_size, start_bounds=((0, grid_size // 2), (0, grid_size)),
-                                       goal_bounds=((grid_size // 2, grid_size), (0, grid_size)))
+        start, goal = random_start_end(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
+                                       goal_bounds=((grid_size - 1, grid_size), (0, grid_size)))
+
         obs = env.reset(init_grid=init_grid, starts=[start], goals=[goal])
         for step in range(steps):
             env.render()
             plt.savefig(f'images/gif_frame/E{episode:03}S{step:05}.png')
-            plt.imsave
             plt.cla()
 
-            # filenames.append(f'images/gif_frame/E{episode:03}S{step:05}.png')
+            filenames.append(f'images/gif_frame/E{episode:03}S{step:05}.png')
             actions = [env.agents[i].select_action(obs[i]) for i in range(len(env.agents))]
             obs, rewards, done, info = env.step(actions)
             if done:
@@ -227,8 +227,8 @@ def main(config_file):
 
             # if start_goal_period elapsed: change start and goal
             if episode > 0 and episode % start_goal_reset_period == 0:
-                start, goal = random_start_end(width=grid_size, start_bounds=((0, grid_size // 2), (0, grid_size)),
-                                               goal_bounds=((grid_size // 2, grid_size), (0, grid_size)))
+                start, goal = random_start_end(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
+                                               goal_bounds=((grid_size - 1, grid_size), (0, grid_size)))
                 print(f"New start is {start} and new goal is {goal}")
 
             cum_rewards.append(cum_reward)
@@ -282,10 +282,10 @@ def main(config_file):
         env.render(policy=True, u=U, v=V)
         plt.show()
 
-    # create_gif("test", env, init_grid, steps=10, episodes=3)
+    create_gif("G10S100E5", env, init_grid, steps=100, episodes=5)
 
     env.close()
 
 
 if __name__ == '__main__':
-    main("config.ini")
+    main("config10.ini")

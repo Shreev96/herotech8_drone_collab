@@ -3,25 +3,28 @@ from datetime import datetime
 from main import main
 import configparser
 
-if __name__ == '__main__':
-    steps_s = [10, 20, 30, 50, 100, 500]
+
+def bench1():
+    steps_s = [100]
     episodes_s = [1000]
-    train_period_s = [1, 3, 10, 50, 100]
-    start_goal_reset_period_s = [1, 3, 10, 50, 100]
+    train_period_s = [3]
+    start_goal_reset_period_s = [1]
 
     grid_size = 10
 
-    alpha_s = [0.01, 0.05, 0.1, 0.5, 1, 5, 10]
+    alpha_s = [10.0, 15.0, 20.0, 100.0]
 
     # rewards:
-    FREE_S = [0, -0.04, -0.1, -1.0, -5.0]
-    GOAL_S = [1.0, 5.0, 10.0, 20.0, 50.0, 100.0]
-    OUT_OF_BOUNDS_S = [-0.8, -1.0, -5.0, -10.0, -100.0]
+    FREE_S = [-1.0]
+    GOAL_S = [1000.0]
+    OUT_OF_BOUNDS_S = [-10.0]
 
     config = configparser.ConfigParser(allow_no_value=True)
     config.read("config.ini")
+    config["Grid Parameters"]["grid_size"] = str(grid_size)
 
-    total_len = len(steps_s) + len(episodes_s) + len(train_period_s) + len(start_goal_reset_period_s) + len(alpha_s) + len(FREE_S) + len(GOAL_S) + len(OUT_OF_BOUNDS_S)
+    total_len = len(steps_s) * len(episodes_s) * len(train_period_s) * len(start_goal_reset_period_s) * len(
+        alpha_s) * len(FREE_S) * len(GOAL_S) * len(OUT_OF_BOUNDS_S)
 
     run_number = 0
     for steps in steps_s:
@@ -50,3 +53,51 @@ if __name__ == '__main__':
 
                                     print(f"Run {run_number} on {total_len}")
                                     main(f"logs/configs/{now.strftime('%Y%m%d%H%M%S')}.ini")
+
+
+def bench2():
+    grid_size = 10
+
+    values = [
+        (100, 1000, 3, 10, 0.01, 0.0, 1000.0, -10.0),
+        (100, 1000, 10, 1, 0.01, 0.0, 1000.0, -10.0),
+        (100, 1000, 3, 1, 10.0, -1.0, 1000.0, -10.0),
+        (100, 1000, 3, 10, 0.01, -0.04, 1000.0, -10.0),
+        (100, 1000, 10, 10, 1.0, -1.0, 1000.0, -10.0),
+        (100, 1000, 3, 1, 1.0, 0.0, 1000.0, -10.0),
+        (100, 1000, 3, 1, 1.0, -0.04, 1000.0, -10.0),
+        (100, 1000, 10, 10, 1.0, -0.04, 1000.0, -10.0),
+        (100, 1000, 3, 10, 10, -0.04, 1000.0, -10.0)
+    ]
+
+    config = configparser.ConfigParser(allow_no_value=True)
+    config.read("config.ini")
+    config["Grid Parameters"]["grid_size"] = str(grid_size)
+
+    total_len = len(values)
+
+    run_number = 0
+    for steps, episodes, train_period, start_goal_reset_period, alpha, free, goal, out_of_b in values:
+        run_number += 1
+        config["RL Parameters"]["steps"] = str(steps)
+        config["RL Parameters"]["episodes"] = str(episodes)
+        config["RL Parameters"]["train_period"] = str(train_period)
+        config["RL Parameters"]["start_goal_reset_period"] = str(start_goal_reset_period)
+
+        config["SQN Parameters"]["alpha"] = str(alpha)
+
+        config["Gridworld Parameters"]["FREE"] = str(free)
+        config["Gridworld Parameters"]["GOAL"] = str(goal)
+        config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(out_of_b)
+
+        now = datetime.now()
+        with open(f"logs/configs/{now.strftime('%Y%m%d%H%M%S')}.ini", 'w') as configfile:
+            config.write(configfile)
+
+        print(f"Run {run_number} on {total_len}")
+        main(f"logs/configs/{now.strftime('%Y%m%d%H%M%S')}.ini")
+
+
+if __name__ == '__main__':
+    bench1()
+    # bench2()
