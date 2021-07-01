@@ -6,18 +6,18 @@ import configparser
 
 def bench1():
     steps_s = [100]
-    episodes_s = [1000]
-    train_period_s = [3]
+    episodes_s = [2000]
+    train_period_s = [5]
     start_goal_reset_period_s = [1]
 
     grid_size = 10
 
-    alpha_s = [10.0, 15.0, 20.0, 100.0]
+    alpha_s = [2.0]
 
     # rewards:
-    FREE_S = [-1.0]
-    GOAL_S = [1000.0]
-    OUT_OF_BOUNDS_S = [-10.0]
+    FREE_S = [-0.01]
+    GOAL_S = [10.0]
+    OUT_OF_BOUNDS_S = [0.0]
 
     config = configparser.ConfigParser(allow_no_value=True)
     config.read("config.ini")
