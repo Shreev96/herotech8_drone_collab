@@ -187,14 +187,24 @@ def main(config_file):
     total_steps = []
 
     try:
-        env.reset(init_grid=init_grid, starts=[start], goals=[goal])
-        print(f"First start is {start} and first goal is {goal}")
+        env.reset()
         env.render()
         plt.show()
 
+        reset_start_goal = True
+        reset_grid = True
+
         start_time = time.time()
         for episode in range(episodes):
-            obs = env.reset(init_grid=init_grid, starts=[start], goals=[goal])
+
+            # if start_goal_period elapsed: change start and goal
+            if episode > 0 and episode % start_goal_reset_period == 0:
+                reset_start_goal = True
+
+            obs = env.reset(reset_starts_goals=reset_start_goal, reset_grid=reset_grid)
+            reset_start_goal = False
+            # reset_grid = False
+
             cum_reward = 0
 
             for step in range(steps):
@@ -224,12 +234,6 @@ def main(config_file):
                     break
 
             print(f"Episode {episode} finished after {step + 1} time steps")
-
-            # if start_goal_period elapsed: change start and goal
-            if episode > 0 and episode % start_goal_reset_period == 0:
-                start, goal = random_start_goal(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
-                                                goal_bounds=((grid_size - 7, grid_size), (0, grid_size)))
-                print(f"New start is {start} and new goal is {goal}")
 
             cum_rewards.append(cum_reward)
             total_steps.append(step)

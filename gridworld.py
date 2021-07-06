@@ -333,6 +333,7 @@ class GridWorld(gym.Env):
                        or any(self.grid[goal] is not None for goal in goals)):
                     # if any of the goal and start positions is on another object of the grid generate new positions
                     starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0])
+            print(f"New starts are {starts} and new goals are {goals}")
         else:
             starts, goals = [agent.init_pos for agent in self.agents], [agent.init_goal for agent in self.agents]
 
@@ -341,7 +342,7 @@ class GridWorld(gym.Env):
                                       max_shapes=2, max_size=None, allow_overlap=False)
             if not reset_starts_goals:
                 starts, goals = (agent.init_pos for agent in self.agents), (agent.init_goal for agent in self.agents)
-                while any(_grid(starts)) or any(_grid[goals]):
+                while any(_grid[start] for start in starts) or any(_grid[goal] for goal in goals):
                     # if any of the generated obstacles is on one of the goal or start positions :
                     # generate new obstacles
                     _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1], max_shapes=2, max_size=None,
