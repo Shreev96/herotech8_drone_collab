@@ -4,11 +4,15 @@ from enum import IntEnum
 from typing import Tuple, Dict, Optional
 
 import gym
+import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numpy as np
 from gym import spaces
 from gym.utils import seeding
 
+from grid_generators.random_maze import random_maze
+from grid_generators.random_shape_maze import random_shape_maze
+from grid_generators.random_start_goal import random_start_goal, random_starts_goals
 from rendering import fill_coords, point_in_rect, highlight_img, downsample
 
 from copy import deepcopy
@@ -70,7 +74,6 @@ class Grid:  # not used yet
 
         self.grid = np.empty(shape=(width, height), dtype=WorldObj)
 
-        self._obj_2_idx = {None: 0}
         self._idx_2_obj = {v: k for k, v in self._obj_2_idx.items()}
 
     @classmethod
@@ -267,12 +270,11 @@ class GridWorld(gym.Env):
         down = 3
 
     class GridLegend(IntEnum):
-        # FREE = 1
+        # FREE = 0
+        OBSTACLE = 1
         AGENT = 2
-        OBSTACLE = 0
-        # VISITED = 5  # Commented out for now since it interferes with the conv-net input tensor
+        GOAL = 3
         # OUT_OF_BOUNDS = 6  # Commented out for now since it interferes with the conv-net input tensor
-        GOAL = 7
 
     class UnknownAction(Exception):
         """Raised when an agent try to do an unknown action"""
@@ -323,73 +325,38 @@ class GridWorld(gym.Env):
                         "goal": 10.0,
                         "out_of_bounds": -0.8}
 
-    def reset(self, init_grid=None, starts=None, goals=None):
-        # TODO : IMPROVE
-        # gen new grid
-        # TODO
-        if init_grid is not None:
-            self.grid = init_grid
-
-        # w, h = self.grid.shape
-        # free_cells = [(i, j) for i in range(w) for j in range(h) if self.grid[i, j] == self.GridLegend.FREE]
-
-        self.agents_initial_pos = [agent.init_pos for agent in self.agents]
-
-        # place agents
-        if starts is None:
-            for i in range(len(self.agents)):
-                agent = self.agents[i]
-                # reset initial positions
-                if agent.init_pos is None:
-                    # agent does not have a specified unique initial position
-                    # assign random one
-                    w, h = self.grid.shape
-                    start = random.randrange(0, w), random.randrange(0, h)
-                    while start in self.agents_initial_pos or self.grid[start] == self.GridLegend.OBSTACLE:
-                        # while the new start position is the same of another agents
-                        # or if the new start position is an obstacle
-                        # try another one
-                        # (should work fine for not too complex labyrinth or when there is not much agents and be faster
-                        # than going through the grid and removing the unavailable cells in such a case)
-                        start = random.randrange(0, w), random.randrange(0, h)
-                    agent.pos = start
-                    self.agents_initial_pos[i] = start
-                else:
-                    agent.pos = agent.init_pos
-                    self.agents_initial_pos[i] = agent.init_pos
+    def reset(self, reset_starts_goals=True, reset_grid=True):
+        if reset_starts_goals:
+            starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0])
+            if not reset_grid:
+                while (any(self.grid[start] is not None for start in starts)
+                       or any(self.grid[goal] is not None for goal in goals)):
+                    # if any of the goal and start positions is on another object of the grid generate new positions
+                    starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0])
         else:
-            for i in range(len(self.agents)):
-                self.agents[i].pos = starts[i]
-                self.agents_initial_pos[i] = starts[i]
+            starts, goals = [agent.init_pos for agent in self.agents], [agent.init_goal for agent in self.agents]
 
-            # reset goals
-        if goals is None:
-            for i in range(len(self.agents)):
-                agent = self.agents[i]
-                if agent.init_goal is None:
-                    # agent does not have a specified unique goal
-                    # assign a random one
-                    w, h = self.grid.shape
-                    goal = random.randrange(0, w), random.randrange(0, h)
-                    while goal == agent.pos or self.grid[goal] == self.GridLegend.OBSTACLE:
-                        # while the new goal position is an obstacle or the starting position of the agent
-                        # try another one
-                        # (should work fine for not too complex labyrinth or when there is not much agents and be faster
-                        # than going through the grid and removing the unavailable cells in such a case)
-                        goal = random.randrange(0, w), random.randrange(0, h)
-                    agent.goal = goal
-                else:
-                    agent.goal = agent.init_goal
-        else:
-            for i in range(len(self.agents)):
-                self.agents[i].goal = goals[i]
+        if reset_grid:
+            _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1],
+                                      max_shapes=2, max_size=None, allow_overlap=False)
+            if not reset_starts_goals:
+                starts, goals = (agent.init_pos for agent in self.agents), (agent.init_goal for agent in self.agents)
+                while any(_grid(starts)) or any(_grid[goals]):
+                    # if any of the generated obstacles is on one of the goal or start positions :
+                    # generate new obstacles
+                    _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1], max_shapes=2, max_size=None,
+                                              allow_overlap=False)
+            self.grid = _grid
 
-        for agent in self.agents:
+        for i in range(len(self.agents)):
+            agent = self.agents[i]
+            agent.pos = starts[i]
+            agent.init_pos = starts[i]
+            agent.goal = goals[i]
+            agent.init_goal = goals[i]
             agent.done = False
 
         # self.render()  # show the initial arrangement of the grid
-
-        self.step_count = 0
 
         # return first observation
         return self.gen_obs()
@@ -604,7 +571,7 @@ class GridWorld(gym.Env):
             grid = deepcopy(grid_backup)  # Reset grid (erase agent current position)
 
         # Make sure the goal state is a sink (largest V value)
-        v_values[agent.goal] = min(np.amax(v_values) + 0.5, np.amax(v_values)*2)
+        v_values[agent.goal] = min(np.amax(v_values) + 0.5, np.amax(v_values) * 2)
 
         # Setting the obstacle V values to the lowest
         row = obstacle_spaces[0]
@@ -621,7 +588,6 @@ class GridWorld(gym.Env):
         min_ = np.amin(v_values)
 
         if min_ < 0:
-
             # Shift all values upwards by min_
             v_values -= min_
 
@@ -630,7 +596,7 @@ class GridWorld(gym.Env):
             v_values[agent.goal] = min(np.amax(v_values) + 0.5, np.amax(v_values) * 2)
 
         # Min-max scaling of V values (applicable only to all positive values)
-        v_values = (v_values - np.amin(v_values))/(np.amax(v_values) - np.amin(v_values))
+        v_values = (v_values - np.amin(v_values)) / (np.amax(v_values) - np.amin(v_values))
 
         return v_values
 
@@ -703,14 +669,14 @@ class GridWorld(gym.Env):
         # With or without greedy deterministic policy
         if not value_func:
 
-            canvas = self.grid.copy()
+            canvas = self.grid.copy().astype(float)
 
             for agent in self.agents:
                 # mark the visited cells in 0.6 gray
                 # canvas[tuple(self.agents_visited_cells[agent])] = 0.6
 
                 # mark the terminal states in 0.9 gray
-                canvas[agent.goal] = 0.9
+                canvas[agent.goal] = 0.7
 
                 if not policy:
                     # mark the current position in 0.3 gray
@@ -726,8 +692,7 @@ class GridWorld(gym.Env):
                 ax.set_xticklabels([])
                 ax.set_yticklabels([])
 
-                ax.imshow(canvas, interpolation='none', cmap='gray')
-
+                ax.imshow(canvas, interpolation='none', cmap='binary')
             else:
                 super(GridWorld, self).render(mode=mode)  # just raise an exception for not Implemented mode
 
@@ -749,7 +714,6 @@ class GridWorld(gym.Env):
                 plt.title("Value function map")
 
         if policy:
-
             plt.quiver(np.arange(np.shape(self.grid)[0]), np.arange(np.shape(self.grid)[1]), u, v, zorder=10,
                        label="Policy")
             plt.title('Equivalent Greedy Policy')

@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from grid_generators.random_start_end import random_start_end
+from grid_generators.random_start_goal import random_start_goal
 from gridworld import GridWorld
 from main import read_config, read_agents_config, read_grid_config, read_env_config
 
@@ -31,8 +31,8 @@ if __name__ == '__main__':
 
     plt.ion()
     fig, (ax1, ax2) = plt.subplots(1, 2)
-    start, goal = random_start_end(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
-                                   goal_bounds=((grid_size - 1, grid_size), (0, grid_size)))
+    start, goal = random_start_goal(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
+                                    goal_bounds=((grid_size - 1, grid_size), (0, grid_size)))
     line, = ax2.plot([0])
     plt.subplot(121)
 
@@ -62,8 +62,8 @@ if __name__ == '__main__':
             env.render()
             fig.canvas.draw()
             fig.canvas.flush_events()
-            start, goal = random_start_end(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
-                                           goal_bounds=((grid_size - 1, grid_size), (0, grid_size)))
+            start, goal = random_start_goal(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
+                                            goal_bounds=((grid_size - 1, grid_size), (0, grid_size)))
             env.reset(init_grid=init_grid, starts=[start], goals=[goal])
 
         env.render()

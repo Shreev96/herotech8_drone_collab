@@ -17,9 +17,9 @@ class AgentBase:
 
     class GridLegend(IntEnum):
         """ Replica of the version in the gridworld class. Needed to create the Conv-net"""
-        # FREE = 1
+        # FREE = 0
         AGENT = 2
-        OBSTACLE = 0
+        OBSTACLE = 1
         # VISITED = 5  # TODO: Commented now to help with creation of Convnet input
         # OUT_OF_BOUNDS = 6  # TODO: Commented now to help with creation of Convnet input
         GOAL = 7

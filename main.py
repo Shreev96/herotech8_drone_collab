@@ -12,8 +12,8 @@ from SQN import AgentSQN
 from DQN_Conv import AgentDQN
 
 from gridworld import GridWorld
-from grid_generators.random_grid_generator import random_maze
-from grid_generators.random_start_end import random_start_end
+from grid_generators.random_maze import random_maze
+from grid_generators.random_start_goal import random_start_goal
 
 # Model training parameters
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU
@@ -76,8 +76,8 @@ def create_gif(filename, env, init_grid, steps=100, episodes=1):
     grid_size = len(env.grid)
 
     for episode in range(episodes):
-        start, goal = random_start_end(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
-                                       goal_bounds=((grid_size - 7, grid_size), (0, grid_size)))
+        start, goal = random_start_goal(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
+                                        goal_bounds=((grid_size - 7, grid_size), (0, grid_size)))
 
         obs = env.reset(init_grid=init_grid, starts=[start], goals=[goal])
         for step in range(steps):
@@ -113,8 +113,8 @@ def create_gif2(filename, env, init_grid, steps=100, episodes=1):
     grid_size = len(env.grid)
     with imageio.get_writer(f'images/gif/{filename}.gif', mode='I') as writer:
         for episode in range(episodes):
-            start, goal = random_start_end(width=grid_size, start_bounds=((0, grid_size // 2), (0, grid_size)),
-                                           goal_bounds=((grid_size // 2, grid_size), (0, grid_size)))
+            start, goal = random_start_goal(width=grid_size, start_bounds=((0, grid_size // 2), (0, grid_size)),
+                                            goal_bounds=((grid_size // 2, grid_size), (0, grid_size)))
             obs = env.reset(init_grid=init_grid, starts=[start], goals=[goal])
             for step in range(steps):
                 env.render()
@@ -142,15 +142,15 @@ def main(config_file):
 
     # init_grid = np.genfromtxt('sample_grid/init_grid.csv', delimiter=',')  # generate a grid from a csv file
     # init_grid = random_maze(start, goal, width=grid_size, height=grid_size, complexity=0.5, density=0.5)
-    init_grid = np.ones((grid_size, grid_size))  # empty grid
+    init_grid = np.zeros((grid_size, grid_size))  # empty grid
 
     ####################
     # STARTS AND GOALS #
     ####################
     # start = (0, 0)
     # goal = (grid_size - 1, grid_size - 1)  # place goal in bottom-right corner
-    start, goal = random_start_end(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
-                                   goal_bounds=((grid_size - 7, grid_size), (0, grid_size)))
+    start, goal = random_start_goal(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
+                                    goal_bounds=((grid_size - 7, grid_size), (0, grid_size)))
 
     ###################
     # AGENTS CREATION #
@@ -227,8 +227,8 @@ def main(config_file):
 
             # if start_goal_period elapsed: change start and goal
             if episode > 0 and episode % start_goal_reset_period == 0:
-                start, goal = random_start_end(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
-                                               goal_bounds=((grid_size - 7, grid_size), (0, grid_size)))
+                start, goal = random_start_goal(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
+                                                goal_bounds=((grid_size - 7, grid_size), (0, grid_size)))
                 print(f"New start is {start} and new goal is {goal}")
 
             cum_rewards.append(cum_reward)
