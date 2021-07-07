@@ -245,8 +245,16 @@ def main(config_file):
     finally:
         now = datetime.now()
 
+        # save model
         env.save(directory="logs/models", datetime=now.strftime('%Y%m%d%H%M%S'))
 
+        # save config file in logs with good datetime
+        with open(config_file) as f1:
+            with open(f"logs/configs/{now.strftime('%Y%m%d%H%M%S')}.ini", "w") as f2:
+                for line in f1:
+                    f2.write(line)
+
+        # save cumulated reward plot
         plt.clf()
         plt.title(("Cumulated Reward for " + model + f"\n{config_file}"))
         plt.xlabel("Epochs")
@@ -254,6 +262,7 @@ def main(config_file):
         plt.savefig(f"logs/cumulated_rewards/{now.strftime('%Y%m%d%H%M%S')}.png")
         plt.clf()
 
+        # save total steps plot
         plt.title(("Total steps for " + model + f"\n{config_file}"))
         plt.xlabel("Epochs")
         plt.plot(total_steps)
@@ -269,6 +278,7 @@ def main(config_file):
                 counter += 1
             improvement[ii] = counter
 
+        # save improvement plot
         plt.title("Improvement over training episodes for " + model + f"\n{config_file}")
         plt.xlabel("Epochs")
         plt.plot(improvement)

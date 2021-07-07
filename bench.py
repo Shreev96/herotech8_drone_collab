@@ -16,13 +16,14 @@ def bench1():
     # rewards:
     FREE_S = [-0.01]
     GOAL_S = [10.0]
-    OUT_OF_BOUNDS_S = [0.0]
+    OUT_OF_BOUNDS_S = [-0.01]
+    OBSTACLES = [-0.05, -0.75, -0.1]
 
     config = configparser.ConfigParser(allow_no_value=True)
     config.read("config.ini")
     config["Grid Parameters"]["grid_size"] = str(grid_size)
 
-    total_len = len(steps_s) * len(episodes_s) * len(train_period_s) * len(start_goal_reset_period_s) * len(alpha_s) * len(FREE_S) * len(GOAL_S) * len(OUT_OF_BOUNDS_S)
+    total_len = len(steps_s) * len(episodes_s) * len(train_period_s) * len(start_goal_reset_period_s) * len(alpha_s) * len(FREE_S) * len(GOAL_S) * len(OUT_OF_BOUNDS_S) * len(OBSTACLES)
 
     run_number = 0
     for steps in steps_s:
@@ -33,24 +34,26 @@ def bench1():
                         for free in FREE_S:
                             for goal in GOAL_S:
                                 for out_of_b in OUT_OF_BOUNDS_S:
-                                    run_number += 1
-                                    config["RL Parameters"]["steps"] = str(steps)
-                                    config["RL Parameters"]["episodes"] = str(episodes)
-                                    config["RL Parameters"]["train_period"] = str(train_period)
-                                    config["RL Parameters"]["start_goal_reset_period"] = str(start_goal_reset_period)
+                                    for obstacle in OBSTACLES:
+                                        run_number += 1
+                                        config["RL Parameters"]["steps"] = str(steps)
+                                        config["RL Parameters"]["episodes"] = str(episodes)
+                                        config["RL Parameters"]["train_period"] = str(train_period)
+                                        config["RL Parameters"]["start_goal_reset_period"] = str(start_goal_reset_period)
 
-                                    config["SQN Parameters"]["alpha"] = str(alpha)
+                                        config["SQN Parameters"]["alpha"] = str(alpha)
 
-                                    config["Gridworld Parameters"]["FREE"] = str(free)
-                                    config["Gridworld Parameters"]["GOAL"] = str(goal)
-                                    config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(free) # test
+                                        config["Gridworld Parameters"]["FREE"] = str(free)
+                                        config["Gridworld Parameters"]["GOAL"] = str(goal)
+                                        config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(out_of_b)
+                                        config["Gridworld Parameters"]["OBSTACLE"] = str(obstacle)
 
-                                    now = datetime.now()
-                                    with open(f"logs/configs/{now.strftime('%Y%m%d%H%M%S')}.ini", 'w') as configfile:
-                                        config.write(configfile)
+                                        now = datetime.now()
+                                        with open(f"runs/{now.strftime('%Y%m%d%H%M%S')}.ini", 'w') as configfile:
+                                            config.write(configfile)
 
-                                    print(f"Run {run_number} on {total_len}")
-                                    main(f"logs/configs/{now.strftime('%Y%m%d%H%M%S')}.ini")
+                                        print(f"Run {run_number} on {total_len}")
+                                        main(f"runs/{now.strftime('%Y%m%d%H%M%S')}.ini")
 
 
 def bench2():
@@ -90,11 +93,11 @@ def bench2():
         config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(out_of_b)
 
         now = datetime.now()
-        with open(f"logs/configs/{now.strftime('%Y%m%d%H%M%S')}.ini", 'w') as configfile:
+        with open(f"runs/{now.strftime('%Y%m%d%H%M%S')}.ini", 'w') as configfile:
             config.write(configfile)
 
         print(f"Run {run_number} on {total_len}")
-        main(f"logs/configs/{now.strftime('%Y%m%d%H%M%S')}.ini")
+        main(f"runs/{now.strftime('%Y%m%d%H%M%S')}.ini")
 
 
 if __name__ == '__main__':
