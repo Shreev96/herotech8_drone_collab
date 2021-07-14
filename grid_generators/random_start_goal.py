@@ -33,7 +33,7 @@ def random_starts_goals(n, width=10, start_bounds=None, goal_bounds=None):
         :param width: width of the grid
         :param start_bounds: a tuple of tuples ((x0, x1), (y0, y1))
         :param goal_bounds: a tuple of tuples ((x0, x1), (y0, y1))
-        :return: random start and goal coordinates"""
+        :return: random list of starts and goals coordinates"""
 
     if start_bounds is None:
         (start_x_bounds, start_y_bounds) = (0, width), (0, width)
@@ -57,3 +57,20 @@ def random_starts_goals(n, width=10, start_bounds=None, goal_bounds=None):
             goals.add(goal)
 
     return list(starts), list(goals)
+
+
+def random_start_goal_in_subsquare(width=10, sub_width=10):
+    """Place a random subsquare within a grid and return a random distinct start and goal positions within this square"
+
+        :param width: width of the grid
+        :param sub_width: width of the square within the grid
+        :return: random start and goal coordinates"""
+        
+    assert width >= sub_width
+
+    (top_x, top_y) = (random.randrange(0, width-sub_width+1), random.randrange(0, width-sub_width+1))
+
+    _start_bounds = ((top_x, top_x + sub_width), (top_y, top_y + sub_width))
+    _goal_bounds = ((top_x, top_x + sub_width), (top_y, top_y + sub_width))
+
+    return random_start_goal(width=width, start_bounds=_start_bounds, goal_bounds=_goal_bounds)
