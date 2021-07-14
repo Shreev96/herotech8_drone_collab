@@ -2,55 +2,62 @@ from datetime import datetime
 
 from main import main
 import configparser
+import itertools
 
 
 def bench1():
-    steps_s = [100]
-    episodes_s = [2000]
-    train_period_s = [5]
-    start_goal_reset_period_s = [1]
+    hyperparameters = {
+        "steps" : [100],
+        "episodes" : [2000],
+        "train_period" : [5],
+        "start_goal_reset_period" : [1],
+        "grid_reset_period" : [1],
+
+        "alpha" : [0.5, 1.0, 2.0, 3.0],
+        "update_period" : [3, 5, 10, 20],
+        "batch_size" : [64, 512],
+
+        # rewards:
+        "FREE" : [-0.01],
+        "GOAL" : [1.0, 10.0],
+        "OUT_OF_BOUNDS" : [-0.01],
+        "OBSTACLES" : [-0.1]
+    }
+
+    params_values = [v for v in hyperparameters.values()]
 
     grid_size = 10
 
-    alpha_s = [2.0]
-
-    # rewards:
-    FREE_S = [-0.01]
-    GOAL_S = [10.0]
-    OUT_OF_BOUNDS_S = [-0.01]
-    OBSTACLES = [-0.05, -0.75, -0.1]
-
     config = configparser.ConfigParser(allow_no_value=True)
-    config.read("config.ini")
+    config.read("config10.ini")
     config["Grid Parameters"]["grid_size"] = str(grid_size)
 
-    total_len = len(steps_s) * len(episodes_s) * len(train_period_s) * len(start_goal_reset_period_s) * len(alpha_s) * len(FREE_S) * len(GOAL_S) * len(OUT_OF_BOUNDS_S) * len(OBSTACLES)
+    total_len = len(itertools.product(*params_values))
 
     run_number = 0
-    for steps in steps_s:
-        for episodes in episodes_s:
-            for train_period in train_period_s:
-                for start_goal_reset_period in start_goal_reset_period_s:
-                    for alpha in alpha_s:
-                        for free in FREE_S:
-                            for goal in GOAL_S:
-                                for out_of_b in OUT_OF_BOUNDS_S:
-                                    for obstacle in OBSTACLES:
-                                        run_number += 1
-                                        config["RL Parameters"]["steps"] = str(steps)
-                                        config["RL Parameters"]["episodes"] = str(episodes)
-                                        config["RL Parameters"]["train_period"] = str(train_period)
-                                        config["RL Parameters"]["start_goal_reset_period"] = str(start_goal_reset_period)
+    for (steps, episodes, train_period, start_goal_reset_period, grid_reset_period, 
+        alpha, update_period, batch_size,
+        free, goal, out_of_b, obstacle) in itertools.product(*params_values):
 
-                                        config["SQN Parameters"]["alpha"] = str(alpha)
+        run_number += 1
+        config["RL Parameters"]["steps"] = str(steps)
+        config["RL Parameters"]["episodes"] = str(episodes)
+        config["RL Parameters"]["train_period"] = str(train_period)
+        config["RL Parameters"]["start_goal_reset_period"] = str(start_goal_reset_period)
+        config["RL Parameters"]["grid_reset_period"] = str(grid_reset_period)
 
-                                        config["Gridworld Parameters"]["FREE"] = str(free)
-                                        config["Gridworld Parameters"]["GOAL"] = str(goal)
-                                        config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(out_of_b)
-                                        config["Gridworld Parameters"]["OBSTACLE"] = str(obstacle)
+        config["SQN Parameters"]["alpha"] = str(alpha)
+        config["SQN Parameters"]["update_period"] = str(update_period)
+        config["SQN Parameters"]["batch_size"] = str(batch_size)
 
-                                        print(f"Run {run_number} on {total_len}")
-                                        main(config)
+        config["Gridworld Parameters"]["FREE"] = str(free)
+        config["Gridworld Parameters"]["GOAL"] = str(goal)
+        config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(out_of_b)
+        config["Gridworld Parameters"]["OBSTACLE"] = str(obstacle)
+
+        print(f"Run {run_number} on {total_len}")
+        main(config)
+    print(f"{run_number} runs on {total_len} finished")
 
 
 def bench2():
@@ -93,6 +100,41 @@ def bench2():
         main(config)
 
 
+def bench3():
+
+    grid_size = 10
+
+    runs = [
+        "logs/configs/20210713152528.ini",
+        "logs/configs/20210713152731.ini"
+    ]
+
+    config = configparser.ConfigParser(allow_no_value=True)
+
+    total_len = len(runs)
+
+    run_number = 0
+    for run_config in runs:
+        run_number += 1
+
+        config.read(run_config)
+
+        # fix a value?
+        config["RL Parameters"]["episodes"] = str(10000)
+        config["SQN Parameters"]["batch_size"] = str(512)
+
+        now = datetime.now()
+        with open(f"runs/{now.strftime('%Y%m%d%H%M%S')}.ini", 'w') as configfile:
+            config.write(configfile)
+
+        print(f"Run {run_number} on {total_len}")
+        main(config)
+
+    print(f"{run_number} runs done on {total_len}")
+
+
+
 if __name__ == '__main__':
     bench1()
     # bench2()
+    # bench3()

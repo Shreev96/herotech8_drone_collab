@@ -25,9 +25,10 @@ def read_config(config):
     episodes = rl_parameters.getint("episodes")
     train_period = rl_parameters.getint("train_period")
     start_goal_reset_period = rl_parameters.getint("start_goal_reset_period")
+    grid_reset_period = rl_parameters.getint("grid_reset_period")
     effects = rl_parameters.getboolean("effects")
 
-    return steps, episodes, train_period, start_goal_reset_period, effects
+    return steps, episodes, train_period, start_goal_reset_period, grid_reset_period, effects
 
 
 def read_grid_config(config):
@@ -57,7 +58,7 @@ def read_env_config(config):
     return col_wind, range_random_wind, probabilities
 
 
-def create_gif(filename, env, init_grid, steps=100, episodes=1):
+def create_gif(filename, env, reset_start_goal=True, reset_grid=True, steps=100, episodes=1):
     """ render result and create gif of the result"""
     filenames = []
     fig = plt.figure()
@@ -65,10 +66,7 @@ def create_gif(filename, env, init_grid, steps=100, episodes=1):
     grid_size = len(env.grid)
 
     for episode in range(episodes):
-        start, goal = random_start_goal(width=grid_size, start_bounds=((0, 1), (0, grid_size)),
-                                        goal_bounds=((grid_size - 7, grid_size), (0, grid_size)))
-
-        obs = env.reset(init_grid=init_grid, starts=[start], goals=[goal])
+        obs = env.reset(reset_start_goal, reset_grid)
         for step in range(steps):
             env.render()
             plt.savefig(f'images/gif_frame/E{episode:03}S{step:05}.png')
@@ -142,7 +140,7 @@ def create_comment(config):
 def main(config: configparser.ConfigParser):
     print(DEVICE)
 
-    steps, episodes, train_period, start_goal_reset_period, effects = read_config(config)
+    steps, episodes, train_period, start_goal_reset_period, grid_reset_period, effects = read_config(config)
     step_done = 0
 
     #################
@@ -206,19 +204,33 @@ def main(config: configparser.ConfigParser):
         env.render()
         plt.show()
 
+        train_period_s = np.linspace(start=5000, stop=train_period, num=200, endpoint=True, dtype=int)
+        train_period_delay_s = np.linspace(start=0, stop=8000, num=200, endpoint=True, dtype=int)
+
+        train_period_index = 0
+        # train_period = train_period_s[0]
+
         reset_start_goal = True
         reset_grid = True
 
         start_time = time.time()
+
         for episode in range(episodes):
+            # if episode <=8000 and episode == train_period_delay_s[train_period_index]:
+            #     train_period = train_period_s[train_period_index]
+            #     train_period_index += 1
+            #     print(f"New training period is {train_period} steps")
+
 
             # if start_goal_period elapsed: change start and goal
-            if episode > 0 and episode % start_goal_reset_period == 0:
-                reset_start_goal = True
+            reset_start_goal = episode > 0 and episode % start_goal_reset_period == 0
+
+            # if reset_grid_period elapsed: change grid
+            reset_grid = episode > 0 and episode % grid_reset_period == 0
 
             obs = env.reset(reset_starts_goals=reset_start_goal, reset_grid=reset_grid)
             reset_start_goal = False
-            # reset_grid = False
+            reset_grid = False
 
             cum_reward = 0
             total_loss = [0 for agent in env.agents]
@@ -241,7 +253,7 @@ def main(config: configparser.ConfigParser):
                 obs = new_obs
 
                 # Perform one step of the optimisation
-                if step_done % train_period == 0:
+                if step_done > 10000 and step_done % train_period == 0:
                     for i in range(len(env.agents)):
                         agent = env.agents[i]
                         loss = agent.train()
@@ -336,7 +348,7 @@ def main(config: configparser.ConfigParser):
         tb.add_figure("Greedy deterministic policy", plt.gcf())
         plt.show()
 
-    create_gif("G10S100E5", env, init_grid, steps=100, episodes=5)
+    # create_gif(config_file[5:-4], env, False, False, steps=100, episodes=1)
 
     tb.close()
     env.close()
