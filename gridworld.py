@@ -337,18 +337,6 @@ class GridWorld(gym.Env):
         else:
             starts, goals = [agent.init_pos for agent in self.agents], [agent.init_goal for agent in self.agents]
 
-        if reset_grid:
-            _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1],
-                                      max_shapes=2, max_size=None, allow_overlap=False)
-            if not reset_starts_goals:
-                starts, goals = (agent.init_pos for agent in self.agents), (agent.init_goal for agent in self.agents)
-                while any(_grid[start] for start in starts) or any(_grid[goal] for goal in goals):
-                    # if any of the generated obstacles is on one of the goal or start positions :
-                    # generate new obstacles
-                    _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1], max_shapes=2, max_size=None,
-                                              allow_overlap=False)
-            self.grid = _grid
-
         for i in range(len(self.agents)):
             agent = self.agents[i]
             agent.pos = starts[i]
@@ -356,6 +344,17 @@ class GridWorld(gym.Env):
             agent.goal = goals[i]
             agent.init_goal = goals[i]
             agent.done = False
+
+        if reset_grid:
+            _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1],
+                                      max_shapes=2, max_size=None, allow_overlap=False)
+            starts, goals = (agent.init_pos for agent in self.agents), (agent.init_goal for agent in self.agents)
+            while any(_grid[start] for start in starts) or any(_grid[goal] for goal in goals):
+                # if any of the generated obstacles is on one of the goal or start positions :
+                # generate new obstacles
+                _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1], max_shapes=2, max_size=None,
+                                          allow_overlap=False)
+            self.grid = _grid
 
         # self.render()  # show the initial arrangement of the grid
 

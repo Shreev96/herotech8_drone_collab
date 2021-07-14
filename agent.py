@@ -74,8 +74,8 @@ class AgentBase:
         """
         raise NotImplementedError("Must implement this method")
 
-    def train(self):
-        """Perform a single step of the optimization"""
+    def train(self) -> float:
+        """Perform a single step of the optimization and return the loss"""
         raise NotImplementedError("Must implement this method")
 
     def save(self, path):

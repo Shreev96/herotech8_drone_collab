@@ -128,6 +128,8 @@ class AgentDQN(AgentBase):
 
         self.optimizer.step()
 
+        return loss.item()
+
     def __eq__(self, other):
         return self.id == other.id
 

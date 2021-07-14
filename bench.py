@@ -3,6 +3,7 @@ from datetime import datetime
 from main import main
 import configparser
 
+
 def bench1():
     steps_s = [100]
     episodes_s = [2000]
@@ -48,12 +49,8 @@ def bench1():
                                         config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(out_of_b)
                                         config["Gridworld Parameters"]["OBSTACLE"] = str(obstacle)
 
-                                        now = datetime.now()
-                                        with open(f"runs/{now.strftime('%Y%m%d%H%M%S')}.ini", 'w') as configfile:
-                                            config.write(configfile)
-
                                         print(f"Run {run_number} on {total_len}")
-                                        main(f"runs/{now.strftime('%Y%m%d%H%M%S')}.ini")
+                                        main(config)
 
 
 def bench2():
@@ -92,12 +89,8 @@ def bench2():
         config["Gridworld Parameters"]["GOAL"] = str(goal)
         config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(out_of_b)
 
-        now = datetime.now()
-        with open(f"runs/{now.strftime('%Y%m%d%H%M%S')}.ini", 'w') as configfile:
-            config.write(configfile)
-
         print(f"Run {run_number} on {total_len}")
-        main(f"runs/{now.strftime('%Y%m%d%H%M%S')}.ini")
+        main(config)
 
 
 if __name__ == '__main__':

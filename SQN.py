@@ -112,6 +112,8 @@ class AgentSQN(AgentBase):
         loss.backward()
         self.optimizer.step()
 
+        return loss.item()
+
     def save(self, path):
         torch.save(self.policy_model.state_dict(), path)
 
