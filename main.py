@@ -41,9 +41,9 @@ def read_agents_config(config):
     grid_size = config.getint("Grid Parameters", "grid_size")
 
     if model == "SQN":
-        return [AgentSQN(i, window_size=grid_size, device=DEVICE) for i in range(n)], model
+        return [AgentSQN(i, window_size=grid_size, device=DEVICE, config=config) for i in range(n)], model
     elif model == "DQN":
-        return [AgentDQN(i, window_size=grid_size, device=DEVICE) for i in range(n)], model
+        return [AgentDQN(i, window_size=grid_size, device=DEVICE, config=config) for i in range(n)], model
     else:
         raise NotImplementedError
 
@@ -233,7 +233,7 @@ def main(config: configparser.ConfigParser):
             reset_grid = False
 
             cum_reward = 0
-            total_loss = [0 for agent in env.agents]
+            total_loss = 0
 
             for step in range(steps):
                 # env.render()
@@ -257,7 +257,7 @@ def main(config: configparser.ConfigParser):
                     for i in range(len(env.agents)):
                         agent = env.agents[i]
                         loss = agent.train()
-                        total_loss[i] += loss * agent.batch_size
+                        total_loss += loss * agent.batch_size
 
                 step_done += 1
                 if done:
@@ -271,14 +271,14 @@ def main(config: configparser.ConfigParser):
 
             # Tensorboard logging
             for agent in env.agents:
-                suffix = f"agent_{agent.agent_id}"
+                suffix = f"agent_{agent.id}"
 
                 # agent target network parameters
                 for name, weight in agent.target_model.named_parameters():
                     tb.add_histogram(f"{suffix}.{name}", weight, episode)
-                    tb.add_histogram(f"{suffix}.{name}.grad", weight.grad, episode)
+                    # tb.add_histogram(f"{suffix}.{name}.grad", weight.grad, episode)
 
-            tb.add_scalar("Loss", total_loss[0], episode)
+            tb.add_scalar("Loss", total_loss, episode)
             tb.add_scalar("Cumulated Reward", cum_reward, episode)
             tb.add_scalar("Total steps", step + 1, episode)
 
@@ -296,8 +296,9 @@ def main(config: configparser.ConfigParser):
         with open(f"logs/configs/{now}.ini", "w") as configfile:
             config.write(configfile)
 
-        training_data = pd.DataFrame(data=[cum_rewards, total_loss_s[:][0], total_steps],
-                                     columns=["Cumulated Reward", "Loss", "Total Steps"])
+        training_data = pd.DataFrame(data={"Cumulated Reward":cum_rewards, 
+                                           "Loss": total_loss_s,
+                                           "Total Steps": total_steps})
         training_data.to_csv(f"logs/csv/{now}.csv")
 
         # save cumulated reward plot

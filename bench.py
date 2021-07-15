@@ -8,20 +8,20 @@ import itertools
 def bench1():
     hyperparameters = {
         "steps" : [100],
-        "episodes" : [2000],
+        "episodes" : [1000],
         "train_period" : [5],
         "start_goal_reset_period" : [1],
         "grid_reset_period" : [1],
 
-        "alpha" : [0.5, 1.0, 2.0, 3.0],
-        "update_period" : [3, 5, 10, 20],
-        "batch_size" : [64, 512],
+        "alpha" : [2.0],
+        "update_period" : [3],
+        "batch_size" : [512],
 
         # rewards:
         "FREE" : [-0.01],
         "GOAL" : [1.0, 10.0],
         "OUT_OF_BOUNDS" : [-0.01],
-        "OBSTACLES" : [-0.1]
+        "OBSTACLES" : [-0.75]
     }
 
     params_values = [v for v in hyperparameters.values()]
@@ -32,7 +32,7 @@ def bench1():
     config.read("config10.ini")
     config["Grid Parameters"]["grid_size"] = str(grid_size)
 
-    total_len = len(itertools.product(*params_values))
+    total_len = len(list(itertools.product(*params_values)))
 
     run_number = 0
     for (steps, episodes, train_period, start_goal_reset_period, grid_reset_period, 
@@ -105,11 +105,11 @@ def bench3():
     grid_size = 10
 
     runs = [
-        "logs/configs/20210713152528.ini",
-        "logs/configs/20210713152731.ini"
+        "logs/configs/20210714182131.ini",
+        "logs/configs/20210714185123.ini",
+        "logs/configs/20210714202742.ini"
     ]
 
-    config = configparser.ConfigParser(allow_no_value=True)
 
     total_len = len(runs)
 
@@ -117,15 +117,11 @@ def bench3():
     for run_config in runs:
         run_number += 1
 
+        config = configparser.ConfigParser(allow_no_value=True)
         config.read(run_config)
 
         # fix a value?
-        config["RL Parameters"]["episodes"] = str(10000)
-        config["SQN Parameters"]["batch_size"] = str(512)
-
-        now = datetime.now()
-        with open(f"runs/{now.strftime('%Y%m%d%H%M%S')}.ini", 'w') as configfile:
-            config.write(configfile)
+        config["RL Parameters"]["episodes"] = str(10)
 
         print(f"Run {run_number} on {total_len}")
         main(config)

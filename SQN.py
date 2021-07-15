@@ -12,7 +12,7 @@ from NN import Conv2D_NN
 
 class AgentSQN(AgentBase):
 
-    def __init__(self, i, window_size, device, start=None, goal=None):
+    def __init__(self, i, window_size, device, start=None, goal=None, config=None):
         super().__init__(i, device, start, goal)
 
         # SQL stuff
@@ -25,8 +25,10 @@ class AgentSQN(AgentBase):
         self.target_model.load_state_dict(self.policy_model.state_dict())
         self.target_model.eval()
 
-        config = configparser.ConfigParser()
-        config.read("config.ini")
+        if config is None:
+            config = configparser.ConfigParser()
+            config.read("config.ini")
+
         params = config["SQN Parameters"]
 
         # Entropy weighting

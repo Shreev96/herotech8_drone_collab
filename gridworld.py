@@ -351,7 +351,7 @@ class GridWorld(gym.Env):
                     # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
                     #                                     start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
 
-                    # # within a sub_grid ?
+                    # # within a random sub_grid ?
                     starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=4))
 
             print(f"New starts are {starts} and new goals are {goals}")
@@ -769,9 +769,7 @@ class GridWorld(gym.Env):
         for agent in self.agents:
             agent.save(f"{directory}/{datetime}_{agent.id}.pt")
 
-    def read_reward_config(self, config_file):
-        config = configparser.ConfigParser()
-        config.read(config_file)
+    def read_reward_config(self, config):
         grid_param = config["Gridworld Parameters"]
         self.rewards["free"] = grid_param.getfloat("FREE", self.rewards["free"])
         self.rewards["goal"] = grid_param.getfloat("GOAL", self.rewards["goal"])

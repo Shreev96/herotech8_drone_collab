@@ -13,7 +13,7 @@ from NN import Conv2D_NN
 
 class AgentDQN(AgentBase):
 
-    def __init__(self, i, window_size, device, start=None, goal=None):
+    def __init__(self, i, window_size, device, start=None, goal=None, config=None):
         # ID of the agent (represents the integer number to look for on the grid
         super().__init__(i, device, start, goal)
 
@@ -28,8 +28,10 @@ class AgentDQN(AgentBase):
         self.target_model.eval()
 
         # Parse config file and extract DQN model parameters
-        config = configparser.ConfigParser()
-        config.read("config.ini")
+        if config is None:
+            config = configparser.ConfigParser()
+            config.read("config.ini")
+        
         params = config["DQN Parameters"]
 
         # Exploration vs Exploitation coefficient for e-greedy algorithm
