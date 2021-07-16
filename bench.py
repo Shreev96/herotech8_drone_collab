@@ -4,11 +4,13 @@ from main import main
 import configparser
 import itertools
 
+import os 
+import shutil
 
 def bench1():
     hyperparameters = {
         "steps" : [100],
-        "episodes" : [1000],
+        "episodes" : [6000],
         "train_period" : [5],
         "start_goal_reset_period" : [1],
         "grid_reset_period" : [1],
@@ -18,10 +20,10 @@ def bench1():
         "batch_size" : [512],
 
         # rewards:
-        "FREE" : [-0.01],
-        "GOAL" : [1.0, 10.0],
-        "OUT_OF_BOUNDS" : [-0.01],
-        "OBSTACLES" : [-0.75]
+        "FREE" : [-0.1],
+        "GOAL" : [10.0],
+        "OUT_OF_BOUNDS" : [-0.1],
+        "OBSTACLES" : [-1]
     }
 
     params_values = [v for v in hyperparameters.values()]
@@ -131,6 +133,12 @@ def bench3():
 
 
 if __name__ == '__main__':
+    old_runs = os.listdir("/content/runs")
+    for run in old_runs:
+        if run.startswith("."):
+            continue
+        shutil.move(f"/content/runs/{run}", "/content/old_runs")
+
     bench1()
     # bench2()
     # bench3()

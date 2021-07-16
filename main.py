@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.summary import hparams
 
 from DQN_Conv import AgentDQN
 from SQN import AgentSQN
@@ -17,6 +18,22 @@ from gridworld import GridWorld
 
 # Model training parameters
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU
+
+
+class SummaryWriter(SummaryWriter):
+    def add_hparams(
+        self, hparam_dict, metric_dict, hparam_domain_discrete=None, run_name=None
+    ):
+        torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
+        if type(hparam_dict) is not dict or type(metric_dict) is not dict:
+            raise TypeError('hparam_dict and metric_dict should be dictionary.')
+        exp, ssi, sei = hparams(hparam_dict, metric_dict, hparam_domain_discrete)
+
+        self.file_writer.add_summary(exp)
+        self.file_writer.add_summary(ssi)
+        self.file_writer.add_summary(sei)
+        for k, v in metric_dict.items():
+            self.add_scalar(k, v)
 
 
 def read_config(config):
@@ -137,6 +154,27 @@ def create_comment(config):
            f" rwd_free={free} rwd_goal={goal} rwd_out_of_b={out_of_b} rwd_obstacle={obstacle}"
 
 
+def create_hparams(config):
+    hyperparameters = {
+        "steps" : config["RL Parameters"]["steps"],
+        "episodes" : config["RL Parameters"]["episodes"],
+        "train_period" : config["RL Parameters"]["train_period"],
+        "start_goal_reset_period" : config["RL Parameters"]["start_goal_reset_period"],
+        "grid_reset_period" : config["RL Parameters"]["grid_reset_period"],
+
+        "alpha" : config["SQN Parameters"]["alpha"],
+        "update_period" : config["SQN Parameters"]["update_period"],
+        "batch_size" : config["SQN Parameters"]["batch_size"],
+
+        # rewards:
+        "FREE" : config["Gridworld Parameters"]["FREE"],
+        "GOAL" : config["Gridworld Parameters"]["GOAL"],
+        "OUT_OF_BOUNDS" : config["Gridworld Parameters"]["OUT_OF_BOUNDS"],
+        "OBSTACLES" : config["Gridworld Parameters"]["OBSTACLE"]
+    }
+    return hyperparameters
+
+
 def main(config: configparser.ConfigParser):
     print(DEVICE)
 
@@ -188,30 +226,47 @@ def main(config: configparser.ConfigParser):
     ########
     # MAIN #
     ########
+    # verification
+    print("Hyperparameters :")
+    print("steps", steps)
+    print("episodes", episodes)
+    print("train_period", train_period)
+    print("start_goal_reset_period", start_goal_reset_period)
+    print("grid_reset_period", grid_reset_period)
+    print("alpha", env.agents[0].alpha)
+    print("update_period", env.agents[0].update_steps)
+    print("batch_size", env.agents[0].batch_size)
+    print("reward free", env.rewards["free"])
+    print("reward goal", env.rewards["goal"])
+    print("reward obstacle", env.rewards["obstacles"])
 
+    now = datetime.now().strftime('%Y%m%d%H%M%S')
     # Tensorboard initialisation (for logging values)
+    log_dir = os.path.join("/content/runs", now)
     comment = create_comment(config)
-    tb = SummaryWriter(comment=comment)
+    tb = SummaryWriter(log_dir=log_dir, comment=comment)
 
     plt.ion()
 
-    cum_rewards = []
+    total_reward_s = []
+    cumulated_reward = 0
+    cumulated_rewards = []
     total_steps = []
     total_loss_s = []
-
+    print("Start")
     try:
-        env.reset()
+        env.reset(reset_grid=False)
         env.render()
         plt.show()
 
-        train_period_s = np.linspace(start=5000, stop=train_period, num=200, endpoint=True, dtype=int)
-        train_period_delay_s = np.linspace(start=0, stop=8000, num=200, endpoint=True, dtype=int)
+        train_period_s = np.linspace(start=2000, stop=train_period, num=50, endpoint=True, dtype=int)
+        train_period_delay_s = np.linspace(start=0, stop=8000, num=50, endpoint=True, dtype=int)
 
         train_period_index = 0
         # train_period = train_period_s[0]
 
         reset_start_goal = True
-        reset_grid = True
+        reset_grid = False
 
         start_time = time.time()
 
@@ -226,13 +281,13 @@ def main(config: configparser.ConfigParser):
             reset_start_goal = episode > 0 and episode % start_goal_reset_period == 0
 
             # if reset_grid_period elapsed: change grid
-            reset_grid = episode > 0 and episode % grid_reset_period == 0
+            # reset_grid = episode > 0 and episode % grid_reset_period == 0
 
             obs = env.reset(reset_starts_goals=reset_start_goal, reset_grid=reset_grid)
             reset_start_goal = False
             reset_grid = False
 
-            cum_reward = 0
+            total_reward = 0
             total_loss = 0
 
             for step in range(steps):
@@ -246,14 +301,14 @@ def main(config: configparser.ConfigParser):
                     agent = env.agents[i]
                     action = actions[i]
                     reward = torch.tensor([rewards[i]], device=DEVICE)
-                    cum_reward += reward.item()
+                    total_reward += reward.item()
                     agent.add_to_buffer(obs[i], action, reward, new_obs[i], agent.done)
 
                 # move to the next state
                 obs = new_obs
 
                 # Perform one step of the optimisation
-                if step_done > 10000 and step_done % train_period == 0:
+                if step_done > 0 and step_done % train_period == 0:
                     for i in range(len(env.agents)):
                         agent = env.agents[i]
                         loss = agent.train()
@@ -263,23 +318,34 @@ def main(config: configparser.ConfigParser):
                 if done:
                     break
 
+            # # Perform one step of the optimisation
+            # if episode > 0 and episode % train_period == 0:
+            #     for i in range(len(env.agents)):
+            #         agent = env.agents[i]
+            #         loss = agent.train()
+            #         total_loss += loss * agent.batch_size
+
             print(f"Episode {episode} finished after {step + 1} time steps")
 
-            cum_rewards.append(cum_reward)
+            total_reward_s.append(total_reward)
             total_steps.append(step + 1)
             total_loss_s.append(total_loss)
+            cumulated_reward += total_reward
+            cumulated_rewards.append(cumulated_reward)
 
             # Tensorboard logging
-            for agent in env.agents:
-                suffix = f"agent_{agent.id}"
 
-                # agent target network parameters
-                for name, weight in agent.target_model.named_parameters():
-                    tb.add_histogram(f"{suffix}.{name}", weight, episode)
-                    # tb.add_histogram(f"{suffix}.{name}.grad", weight.grad, episode)
+            # for agent in env.agents:
+            #     suffix = f"agent_{agent.id}"
+
+            #     # agent target network parameters
+            #     for name, weight in agent.target_model.named_parameters():
+            #         tb.add_histogram(f"{suffix}.{name}", weight, episode)
+            #         # tb.add_histogram(f"{suffix}.{name}.grad", weight.grad, episode)
 
             tb.add_scalar("Loss", total_loss, episode)
-            tb.add_scalar("Cumulated Reward", cum_reward, episode)
+            tb.add_scalar("Total Reward", total_reward, episode)
+            tb.add_scalar("Cumulated Reward", cumulated_reward, episode)
             tb.add_scalar("Total steps", step + 1, episode)
 
         print("Complete")
@@ -287,8 +353,6 @@ def main(config: configparser.ConfigParser):
     except Exception as e:
         raise e
     finally:
-        now = datetime.now().strftime('%Y%m%d%H%M%S')
-
         # save model
         env.save(directory="logs/models", datetime=now)
 
@@ -296,7 +360,7 @@ def main(config: configparser.ConfigParser):
         with open(f"logs/configs/{now}.ini", "w") as configfile:
             config.write(configfile)
 
-        training_data = pd.DataFrame(data={"Cumulated Reward":cum_rewards, 
+        training_data = pd.DataFrame(data={"Cumulated Reward":cumulated_rewards, 
                                            "Loss": total_loss_s,
                                            "Total Steps": total_steps})
         training_data.to_csv(f"logs/csv/{now}.csv")
@@ -305,7 +369,7 @@ def main(config: configparser.ConfigParser):
         plt.clf()
         plt.title(("Cumulated Reward for " + model))
         plt.xlabel("Epochs")
-        plt.plot(cum_rewards)
+        plt.plot(total_reward_s)
         plt.savefig(f"logs/cumulated_rewards/{now}.png")
         tb.add_figure("Cumulated Reward Plot", plt.gcf())
         plt.clf()
@@ -348,6 +412,14 @@ def main(config: configparser.ConfigParser):
         env.render(policy=True, u=U, v=V)
         tb.add_figure("Greedy deterministic policy", plt.gcf())
         plt.show()
+
+        hyperparameters = create_hparams(config)
+        metric_dict_={
+            "Success Rate": improvement[-1]/len(total_steps),
+            "Mean Cumulated Reward": cumulated_reward/len(total_steps),
+            "Mean Total Steps": np.mean(total_steps)
+        }
+        tb.add_hparams(hyperparameters, metric_dict=metric_dict_, run_name="")
 
     # create_gif(config_file[5:-4], env, False, False, steps=100, episodes=1)
 

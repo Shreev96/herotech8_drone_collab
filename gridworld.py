@@ -327,32 +327,32 @@ class GridWorld(gym.Env):
 
     def reset(self, reset_starts_goals=True, reset_grid=True):
         if reset_starts_goals:
-            # # whole grid ?
+            # # first row / last row ?
             # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
             #                                     start_bounds=((0,1),(0,self.grid.shape[0])), goal_bounds=((self.grid.shape[0]-1,self.grid.shape[0]),(0,self.grid.shape[0])))
 
-            # # first row / last row ?
-            # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-            #                                     start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
+            # # whole grid ?
+            starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
+                                                start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
 
             # # within a sub_grid ?
-            starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=4))
+            # starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=2))
 
             if not reset_grid:
                 while (any(self.grid[start] for start in starts)
                        or any(self.grid[goal] for goal in goals)):
                     # if any of the goal and start positions is on another object of the grid generate new positions
 
-                    # # whole grid ?
+                    # # first row / last row ?
                     # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
                     #                                     start_bounds=((0,1),(0,self.grid.shape[0])), goal_bounds=((self.grid.shape[0]-1,self.grid.shape[0]),(0,self.grid.shape[0])))
 
-                    # # first row / last row ?
-                    # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-                    #                                     start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
+                    # # whole grid ?
+                    starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
+                                                        start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
 
                     # # within a random sub_grid ?
-                    starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=4))
+                    # starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=2))
 
             print(f"New starts are {starts} and new goals are {goals}")
         else:
@@ -367,15 +367,18 @@ class GridWorld(gym.Env):
             agent.done = False
 
         if reset_grid:
-            _grid = np.zeros((self.grid.shape[0], self.grid.shape[1]))
-            _grid[1:-1,:] = random_shape_maze(self.grid.shape[0], self.grid.shape[1]-2,
-                                              max_shapes=5, max_size=3, allow_overlap=False)
+            # _grid = np.zeros((self.grid.shape[0], self.grid.shape[1]))
+            # _grid[1:-1,:] = random_shape_maze(self.grid.shape[0], self.grid.shape[1]-2,
+            #                                   max_shapes=5, max_size=3, allow_overlap=False)
+            _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1], max_shapes=5, max_size=3, allow_overlap=False)
+
             starts, goals = (agent.init_pos for agent in self.agents), (agent.init_goal for agent in self.agents)
             while any(_grid[start] for start in starts) or any(_grid[goal] for goal in goals):
                 # if any of the generated obstacles is on one of the goal or start positions :
                 # generate new obstacles
-                _grid[1:-1,:] = random_shape_maze(self.grid.shape[0], self.grid.shape[1]-2,
-                                                  max_shapes=5, max_size=3, allow_overlap=False)
+                # _grid[1:-1,:] = random_shape_maze(self.grid.shape[0], self.grid.shape[1]-2,
+                #                                   max_shapes=5, max_size=3, allow_overlap=False)
+                _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1], max_shapes=5, max_size=3, allow_overlap=False)
             self.grid = _grid
         # self.render()  # show the initial arrangement of the grid
 
@@ -435,7 +438,6 @@ class GridWorld(gym.Env):
             # agent.done = True
 
         # check if agent reached its goal
-        # (does each agent have a specific goal? If yes, is it an attribute of the class Agent?)
         elif (n, m) == agent.goal:
             reward = self.rewards["goal"]
             agent.done = True

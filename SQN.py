@@ -69,7 +69,7 @@ class AgentSQN(AgentBase):
 
     def train(self):
         if len(self.experience_replay) < self.batch_size:
-            return
+            return 0
 
         self._learned_steps += 1
 
