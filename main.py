@@ -308,23 +308,23 @@ def main(config: configparser.ConfigParser):
                 # move to the next state
                 obs = new_obs
 
-                # # Perform one step of the optimisation
-                # if step_done > 0 and step_done % train_period == 0:
-                #     for i in range(len(env.agents)):
-                #         agent = env.agents[i]
-                #         loss = agent.train()
-                #         total_loss += loss * agent.batch_size
+                # Perform one step of the optimisation
+                if step_done > 0 and step_done % train_period == 0:
+                    for i in range(len(env.agents)):
+                        agent = env.agents[i]
+                        loss = agent.train()
+                        total_loss += loss * agent.batch_size
 
                 step_done += 1
                 if done:
                     break
 
-            # Perform one step of the optimisation
-            if episode > 0 and episode % train_period == 0:
-                for i in range(len(env.agents)):
-                    agent = env.agents[i]
-                    loss = agent.train()
-                    total_loss += loss * agent.batch_size
+            # # Perform one step of the optimisation
+            # if episode > 0 and episode % train_period == 0:
+            #     for i in range(len(env.agents)):
+            #         agent = env.agents[i]
+            #         loss = agent.train()
+            #         total_loss += loss * agent.batch_size
 
             print(f"Episode {episode} finished after {step + 1} time steps")
 
