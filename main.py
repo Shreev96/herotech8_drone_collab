@@ -255,7 +255,7 @@ def main(config: configparser.ConfigParser):
     total_loss_s = []
     print("Start")
     try:
-        env.reset(reset_grid=False)
+        env.reset(reset_grid=True)  # put True if you want a random init grid
         env.render()
         plt.savefig(f"images/{now}.png")
         plt.show()
