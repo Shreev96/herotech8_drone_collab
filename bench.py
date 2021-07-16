@@ -10,19 +10,19 @@ import shutil
 def bench1():
     hyperparameters = {
         "steps" : [100],
-        "episodes" : [6000],
+        "episodes" : [4000]*5,
         "train_period" : [5],
         "start_goal_reset_period" : [1],
         "grid_reset_period" : [1],
 
-        "alpha" : [2.0],
+        "alpha" : [0.05],
         "update_period" : [3],
         "batch_size" : [512],
 
         # rewards:
-        "FREE" : [-0.1],
+        "FREE" : [-0.01],
         "GOAL" : [10.0],
-        "OUT_OF_BOUNDS" : [-0.1],
+        "OUT_OF_BOUNDS" : [-0.01],
         "OBSTACLES" : [-1]
     }
 
