@@ -4,26 +4,26 @@ from main import main
 import configparser
 import itertools
 
-import os 
+import os
 import shutil
 
 def bench1():
     hyperparameters = {
         "steps" : [100],
-        "episodes" : [4000]*5,
+        "episodes" : [20500],
         "train_period" : [5],
         "start_goal_reset_period" : [1],
-        "grid_reset_period" : [1],
+        "grid_reset_period" : [20],
 
-        "alpha" : [0.05],
-        "update_period" : [3],
+        "alpha" : [0.1],
+        "update_period" : [100],
         "batch_size" : [512],
 
         # rewards:
         "FREE" : [-0.01],
         "GOAL" : [10.0],
-        "OUT_OF_BOUNDS" : [-0.01],
-        "OBSTACLES" : [-1]
+        # "OUT_OF_BOUNDS" : [-0.1],
+        "OBSTACLES" : [-1.0]
     }
 
     params_values = [v for v in hyperparameters.values()]
@@ -39,7 +39,7 @@ def bench1():
     run_number = 0
     for (steps, episodes, train_period, start_goal_reset_period, grid_reset_period, 
         alpha, update_period, batch_size,
-        free, goal, out_of_b, obstacle) in itertools.product(*params_values):
+        free, goal, obstacle) in itertools.product(*params_values):
 
         run_number += 1
         config["RL Parameters"]["steps"] = str(steps)
@@ -54,7 +54,7 @@ def bench1():
 
         config["Gridworld Parameters"]["FREE"] = str(free)
         config["Gridworld Parameters"]["GOAL"] = str(goal)
-        config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(out_of_b)
+        config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(free)  # TODO : for now
         config["Gridworld Parameters"]["OBSTACLE"] = str(obstacle)
 
         print(f"Run {run_number} on {total_len}")
@@ -133,11 +133,12 @@ def bench3():
 
 
 if __name__ == '__main__':
-    old_runs = os.listdir("/content/runs")
+    # move the past runs tensorboard data to old_runs directory to simplify tensorboard representation
+    old_runs = os.listdir("runs")
     for run in old_runs:
         if run.startswith("."):
             continue
-        shutil.move(f"/content/runs/{run}", "/content/old_runs")
+        shutil.move(f"runs/{run}", "old_runs")
 
     bench1()
     # bench2()

@@ -1,5 +1,6 @@
 import configparser
 import random
+import glob
 from enum import IntEnum
 from typing import Tuple, Dict, Optional
 
@@ -325,34 +326,56 @@ class GridWorld(gym.Env):
                         "goal": 10.0,
                         "out_of_bounds": -0.8}
 
-    def reset(self, reset_starts_goals=True, reset_grid=True):
+    def reset(self, reset_starts_goals=True, radius=10, reset_grid=True):
+        if reset_grid:
+            # _grid = np.zeros((self.grid.shape[0], self.grid.shape[1]))
+            # _grid[1:-1,:] = random_shape_maze(self.grid.shape[0], self.grid.shape[1]-2,
+            #                                   max_shapes=5, max_size=3, allow_overlap=False)
+            # _grid = random_shape_maze(*self.grid.shape, max_shapes=5, max_size=3, allow_overlap=False)
+            _grid = np.genfromtxt(random.choice(glob.glob("sample_grid/*.csv")), delimiter=',')
+            if not reset_starts_goals:
+                starts, goals = (agent.init_pos for agent in self.agents), (agent.init_goal for agent in self.agents)
+                
+                tries = 0  # just to protect from the very unlikely case of an infinite loop
+                while tries < 100 and any(_grid[start] for start in starts) or any(_grid[goal] for goal in goals):
+                    # if any of the generated obstacles is on one of the goal or start positions :
+                    # generate new obstacles
+                    # _grid[1:-1,:] = random_shape_maze(self.grid.shape[0], self.grid.shape[1]-2,
+                    #                                   max_shapes=5, max_size=3, allow_overlap=False)
+                    # _grid = random_shape_maze(*self.grid.shape, max_shapes=5, max_size=3, allow_overlap=False)
+                    _grid = np.genfromtxt(random.choice(glob.glob("sample_grid/*.csv")), delimiter=',')
+                if tries == 100:
+                    _grid = np.zeros(self.grid.shape)
+            self.grid = _grid
+            print(f"New grid generated")
+
+
         if reset_starts_goals:
             # # first row / last row ?
             # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
             #                                     start_bounds=((0,1),(0,self.grid.shape[0])), goal_bounds=((self.grid.shape[0]-1,self.grid.shape[0]),(0,self.grid.shape[0])))
 
             # # whole grid ?
-            starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-                                                start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
+            # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
+            #                                     start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
 
             # # within a sub_grid ?
-            # starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=2))
+            starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=radius))
 
-            if not reset_grid:
-                while (any(self.grid[start] for start in starts)
-                       or any(self.grid[goal] for goal in goals)):
-                    # if any of the goal and start positions is on another object of the grid generate new positions
+            while (any(self.grid[start] for start in starts)
+                    or any(self.grid[goal] for goal in goals)):
+                # if any of the goal and start positions is on another object of the grid : generate new positions
 
-                    # # first row / last row ?
-                    # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-                    #                                     start_bounds=((0,1),(0,self.grid.shape[0])), goal_bounds=((self.grid.shape[0]-1,self.grid.shape[0]),(0,self.grid.shape[0])))
+                # # first row / last row ?
+                # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
+                #                                     start_bounds=((0,1),(0,self.grid.shape[0])), goal_bounds=((self.grid.shape[0]-1,self.grid.shape[0]),(0,self.grid.shape[0])))
 
-                    # # whole grid ?
-                    starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-                                                        start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
+                # # whole grid ?
+                # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
+                #                                     start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
 
-                    # # within a random sub_grid ?
-                    # starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=2))
+                # # within a random sub_grid ?
+                starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=radius))
 
             print(f"New starts are {starts} and new goals are {goals}")
         else:
@@ -366,20 +389,6 @@ class GridWorld(gym.Env):
             agent.init_goal = goals[i]
             agent.done = False
 
-        if reset_grid:
-            # _grid = np.zeros((self.grid.shape[0], self.grid.shape[1]))
-            # _grid[1:-1,:] = random_shape_maze(self.grid.shape[0], self.grid.shape[1]-2,
-            #                                   max_shapes=5, max_size=3, allow_overlap=False)
-            _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1], max_shapes=5, max_size=3, allow_overlap=False)
-
-            starts, goals = (agent.init_pos for agent in self.agents), (agent.init_goal for agent in self.agents)
-            while any(_grid[start] for start in starts) or any(_grid[goal] for goal in goals):
-                # if any of the generated obstacles is on one of the goal or start positions :
-                # generate new obstacles
-                # _grid[1:-1,:] = random_shape_maze(self.grid.shape[0], self.grid.shape[1]-2,
-                #                                   max_shapes=5, max_size=3, allow_overlap=False)
-                _grid = random_shape_maze(self.grid.shape[0], self.grid.shape[1], max_shapes=5, max_size=3, allow_overlap=False)
-            self.grid = _grid
         # self.render()  # show the initial arrangement of the grid
 
         # return first observation

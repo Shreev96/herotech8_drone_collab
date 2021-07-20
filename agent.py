@@ -45,7 +45,7 @@ class AgentBase:
         self.actions = AgentBase.Actions
 
         # DRL stuff
-        self.experience_replay = deque([], maxlen=40000)
+        self.experience_replay = deque([], maxlen=400000)
 
         # PyTorch stuff
         self.device = device

@@ -242,7 +242,7 @@ def main(config: configparser.ConfigParser):
 
     now = datetime.now().strftime('%Y%m%d%H%M%S')
     # Tensorboard initialisation (for logging values)
-    log_dir = os.path.join("/content/runs", now)
+    log_dir = os.path.join("runs", now)
     comment = create_comment(config)
     tb = SummaryWriter(log_dir=log_dir, comment=comment)
 
@@ -263,11 +263,16 @@ def main(config: configparser.ConfigParser):
         train_period_s = np.linspace(start=2000, stop=train_period, num=50, endpoint=True, dtype=int)
         train_period_delay_s = np.linspace(start=0, stop=8000, num=50, endpoint=True, dtype=int)
 
-        train_period_index = 0
+        radius_s = np.linspace(start=2, stop=10, num=9, endpoint=True, dtype=int)
+        radius_delays = np.linspace(start=0, stop=20000, num=9, endpoint=True, dtype=int)
+        radius_index = 0
+        radius = radius_s[0]
+
+        # train_period_index = 0
         # train_period = train_period_s[0]
 
         reset_start_goal = True
-        reset_grid = False
+        reset_grid = True
 
         start_time = time.time()
 
@@ -277,14 +282,18 @@ def main(config: configparser.ConfigParser):
             #     train_period_index += 1
             #     print(f"New training period is {train_period} steps")
 
+            if episode <= 10000 and episode == radius_delays[radius_index]:
+                radius = radius_s[radius_index]
+                radius_index += 1
+                print(f"Radius increased to {radius} cells")
 
             # if start_goal_period elapsed: change start and goal
             reset_start_goal = episode > 0 and episode % start_goal_reset_period == 0
 
             # if reset_grid_period elapsed: change grid
-            # reset_grid = episode > 0 and episode % grid_reset_period == 0
+            reset_grid = episode > 0 and episode % grid_reset_period == 0
 
-            obs = env.reset(reset_starts_goals=reset_start_goal, reset_grid=reset_grid)
+            obs = env.reset(reset_starts_goals=reset_start_goal, radius=radius, reset_grid=reset_grid)
             reset_start_goal = False
             reset_grid = False
 
