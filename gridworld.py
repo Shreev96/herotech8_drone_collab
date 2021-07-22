@@ -328,71 +328,70 @@ class GridWorld(gym.Env):
 
     def reset(self, reset_starts_goals=True, radius=10, reset_grid=True):
         if reset_grid:
-            # _grid = np.zeros((self.grid.shape[0], self.grid.shape[1]))
-            # _grid[1:-1,:] = random_shape_maze(self.grid.shape[0], self.grid.shape[1]-2,
-            #                                   max_shapes=5, max_size=3, allow_overlap=False)
-            # _grid = random_shape_maze(*self.grid.shape, max_shapes=5, max_size=3, allow_overlap=False)
-            _grid = np.genfromtxt(random.choice(glob.glob("sample_grid/*.csv")), delimiter=',')
+            _grid = self._gen_grid(*self.grid.shape)
             if not reset_starts_goals:
                 starts, goals = (agent.init_pos for agent in self.agents), (agent.init_goal for agent in self.agents)
-                
+
                 tries = 0  # just to protect from the very unlikely case of an infinite loop
                 while tries < 100 and any(_grid[start] for start in starts) or any(_grid[goal] for goal in goals):
                     # if any of the generated obstacles is on one of the goal or start positions :
                     # generate new obstacles
-                    # _grid[1:-1,:] = random_shape_maze(self.grid.shape[0], self.grid.shape[1]-2,
-                    #                                   max_shapes=5, max_size=3, allow_overlap=False)
-                    # _grid = random_shape_maze(*self.grid.shape, max_shapes=5, max_size=3, allow_overlap=False)
-                    _grid = np.genfromtxt(random.choice(glob.glob("sample_grid/*.csv")), delimiter=',')
+                    _grid = self._gen_grid(*self.grid.shape)
                 if tries == 100:
                     _grid = np.zeros(self.grid.shape)
             self.grid = _grid
             print(f"New grid generated")
 
-
         if reset_starts_goals:
-            # # first row / last row ?
-            # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-            #                                     start_bounds=((0,1),(0,self.grid.shape[0])), goal_bounds=((self.grid.shape[0]-1,self.grid.shape[0]),(0,self.grid.shape[0])))
+            starts, goals = self._gen_starts_goals_positions(radius)
 
-            # # whole grid ?
-            # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-            #                                     start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
-
-            # # within a sub_grid ?
-            starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=radius))
-
-            while (any(self.grid[start] for start in starts)
-                    or any(self.grid[goal] for goal in goals)):
-                # if any of the goal and start positions is on another object of the grid : generate new positions
-
-                # # first row / last row ?
-                # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-                #                                     start_bounds=((0,1),(0,self.grid.shape[0])), goal_bounds=((self.grid.shape[0]-1,self.grid.shape[0]),(0,self.grid.shape[0])))
-
-                # # whole grid ?
-                # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-                #                                     start_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])), goal_bounds=((0,self.grid.shape[1]),(0,self.grid.shape[0])))
-
-                # # within a random sub_grid ?
-                starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=radius))
+            while any(self.grid[start] for start in starts) or any(self.grid[goal] for goal in goals):
+                # if any of the generated position is on one of the obstacles : generate new positions
+                starts, goals = self._gen_starts_goals_positions(radius)
 
             print(f"New starts are {starts} and new goals are {goals}")
-        else:
-            starts, goals = [agent.init_pos for agent in self.agents], [agent.init_goal for agent in self.agents]
 
-        for i in range(len(self.agents)):
-            agent = self.agents[i]
-            agent.pos = starts[i]
-            agent.init_pos = starts[i]
-            agent.goal = goals[i]
-            agent.init_goal = goals[i]
+            for i in range(len(self.agents)):
+                agent = self.agents[i]
+                agent.pos = starts[i]
+                agent.init_pos = starts[i]
+                agent.goal = goals[i]
+                agent.init_goal = goals[i]
+
+        for agent in self.agents:
             agent.done = False
 
         # self.render()  # show the initial arrangement of the grid
 
         # return first observation
         return self.gen_obs()
+
+    def _gen_grid(self, width, height):
+        """Generate a new grid"""
+
+        # _grid = random_shape_maze(width, height, max_shapes=5, max_size=3, allow_overlap=False)
+        _grid = np.genfromtxt(random.choice(glob.glob("sample_grid/*.csv")), delimiter=',')
+
+        return _grid
+
+    def _gen_starts_goals_positions(self, radius=10):
+        """Generate new starts and goal positions for the agents of the environment"""
+
+        # # first row / last row ?
+        # start_bounds = ((0, 1), (0, self.grid.shape[0]))
+        # goal_bounds = ((self.grid.shape[0] - 1, self.grid.shape[0]), (0, self.grid.shape[0]))
+        # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
+        #                                     start_bounds=start_bounds, goal_bounds=goal_bounds)
+
+        # # whole grid ?
+        # start_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
+        # goal_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
+        # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
+        #                                     start_bounds=start_bounds, goal_bounds=goal_bounds)
+
+        # # within a sub_grid ?
+        starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=radius))
+        return starts, goals
 
     def trans_function(self, state, action, noise):
         """Creating transition function based on environmental factors
@@ -425,11 +424,11 @@ class GridWorld(gym.Env):
 
         return n, m
 
-    def _reward_agent(self, i, move):
+    def _reward_agent(self, i):
         """ compute the reward for the i-th agent in the current state"""
         illegal = False
         agent = self.agents[i]
-        (n, m) = move
+        (n, m) = agent.pos
 
         # check for out of bounds
         if not (0 <= n < self.grid.shape[0] and 0 <= m < self.grid.shape[1]):
@@ -465,12 +464,11 @@ class GridWorld(gym.Env):
         # get a random permutation ( agents actions/reward must be order-independent)
         # random_order = np.random.permutation(len(self.agents))
 
-        # keep a backup of agents state
-        moves = [(None, None) for _ in self.agents]
-
         rewards = np.zeros(len(actions))
 
         # compute the moves
+        moves = [agent.pos for agent in self.agents]
+
         for i in range(len(self.agents)):
 
             # agent mission is already done
@@ -484,7 +482,7 @@ class GridWorld(gym.Env):
             (n, m) = agent.pos  # n is the row number, m is the column number
 
             # Adding random noise (wind) to the action
-            noise = self.np_random.choice(self.w_range, 1, p=self.probabilities)[0]
+            noise = self.np_random.choice(self.w_range, p=self.probabilities)
 
             # Generate move
             (n_, m_) = self.trans_function((n, m), action, noise)
@@ -492,15 +490,22 @@ class GridWorld(gym.Env):
             # Store backup of move for each agent (i)
             moves[i] = (n_, m_)
 
-        # compute rewards and apply moves if they are legal
-        # TODO: improve that to take crashes between agents in account
+        # compute rewards and apply moves if they are legal:
+        # remember old positions
+        old_pos = [agent.pos for agent in self.agents]
+
+        # apply the moves (even if illegal)
+        for i in range(len(self.agents)):
+            self.agents[i].pos = moves[i]
+
+        # compute rewards and illegal assertions and cancel move if illegal
         for i in range(len(self.agents)):
             # compute rewards and illegal assertions
-            rewards[i], illegal = self._reward_agent(i, moves[i])
+            rewards[i], illegal = self._reward_agent(i)
 
-            # apply move if legal
-            if not illegal:
-                self.agents[i].pos = moves[i]
+            # cancel move if illegal
+            if illegal:
+                self.agents[i].pos = old_pos[i]
 
         # game over if all the agents are done
         done = all(agent.done for agent in self.agents)
@@ -780,7 +785,9 @@ class GridWorld(gym.Env):
         for agent in self.agents:
             agent.save(f"{directory}/{datetime}_{agent.id}.pt")
 
-    def read_reward_config(self, config):
+    def read_reward_config(self, config_file):
+        config = configparser.ConfigParser()
+        config.read(config_file)
         grid_param = config["Gridworld Parameters"]
         self.rewards["free"] = grid_param.getfloat("FREE", self.rewards["free"])
         self.rewards["goal"] = grid_param.getfloat("GOAL", self.rewards["goal"])
