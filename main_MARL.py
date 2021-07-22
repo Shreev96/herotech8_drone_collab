@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.tensorboard.summary import hparams
 
 from DQN_Conv import AgentDQN
-from SQN import AgentSQN
+from SQN import AgentSQN, CoordinatorSQN
 from grid_generators.random_start_goal import random_start_goal
 from gridworld import GridWorld
 
@@ -22,7 +22,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU
 
 class SummaryWriter(SummaryWriter):
     def add_hparams(
-        self, hparam_dict, metric_dict, hparam_domain_discrete=None, run_name=None
+            self, hparam_dict, metric_dict, hparam_domain_discrete=None, run_name=None
     ):
         torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
         if type(hparam_dict) is not dict or type(metric_dict) is not dict:
@@ -57,12 +57,16 @@ def read_agents_config(config, env):
     model = config.get("Agents Parameters", "model")
     grid_size = config.getint("Grid Parameters", "grid_size")
 
+    coordinator = None
+
     if model == "SQN":
-        return [AgentSQN(i, obs_shape=env.observation_space.shape, device=DEVICE, config=config) for i in range(n)], model
+        agents = [AgentSQN(i, obs_shape=env.observation_space.shape, device=DEVICE, config=config) for i in range(n)]
+        coordinator = CoordinatorSQN(agents, env.observation_space.shape, DEVICE, config)
     elif model == "DQN":
-        return [AgentDQN(i, obs_shape=env.observation_space.shape, device=DEVICE, config=config) for i in range(n)], model
+        agents = [AgentDQN(i, obs_shape=env.observation_space.shape, device=DEVICE, config=config) for i in range(n)]
     else:
         raise NotImplementedError
+    return agents, coordinator, model
 
 
 def read_env_config(config):
@@ -90,7 +94,7 @@ def create_gif(filename, env, agents, reset_start_goal=True, reset_grid=True, st
             plt.cla()
 
             filenames.append(f'images/gif_frame/E{episode:03}S{step:05}.png')
-            actions = [agents[i].select_action(obs[i]) for i in range(len(env.agents))]
+            actions = [agents[i].select_action(obs[i]) for i in range(len(agents))]
             obs, rewards, done, info = env.step(actions)
             if done:
                 break
@@ -134,21 +138,21 @@ def create_comment(config):
 
 def create_hparams(config):
     hyperparameters = {
-        "steps" : config["RL Parameters"]["steps"],
-        "episodes" : config["RL Parameters"]["episodes"],
-        "train_period" : config["RL Parameters"]["train_period"],
-        "start_goal_reset_period" : config["RL Parameters"]["start_goal_reset_period"],
-        "grid_reset_period" : config["RL Parameters"]["grid_reset_period"],
+        "steps": config["RL Parameters"]["steps"],
+        "episodes": config["RL Parameters"]["episodes"],
+        "train_period": config["RL Parameters"]["train_period"],
+        "start_goal_reset_period": config["RL Parameters"]["start_goal_reset_period"],
+        "grid_reset_period": config["RL Parameters"]["grid_reset_period"],
 
-        "alpha" : config["SQN Parameters"]["alpha"],
-        "update_period" : config["SQN Parameters"]["update_period"],
-        "batch_size" : config["SQN Parameters"]["batch_size"],
+        "alpha": config["SQN Parameters"]["alpha"],
+        "update_period": config["SQN Parameters"]["update_period"],
+        "batch_size": config["SQN Parameters"]["batch_size"],
 
         # rewards:
-        "FREE" : config["Gridworld Parameters"]["FREE"],
-        "GOAL" : config["Gridworld Parameters"]["GOAL"],
-        "OUT_OF_BOUNDS" : config["Gridworld Parameters"]["OUT_OF_BOUNDS"],
-        "OBSTACLES" : config["Gridworld Parameters"]["OBSTACLE"]
+        "FREE": config["Gridworld Parameters"]["FREE"],
+        "GOAL": config["Gridworld Parameters"]["GOAL"],
+        "OUT_OF_BOUNDS": config["Gridworld Parameters"]["OUT_OF_BOUNDS"],
+        "OBSTACLES": config["Gridworld Parameters"]["OBSTACLE"]
     }
     return hyperparameters
 
@@ -179,15 +183,16 @@ def main(config: configparser.ConfigParser):
     #######################
     # GRIDWORLDS CREATION #
     #######################
-    n_agents = config.getint("Agents Parameters", "n")
+    n = config.getint("Agents Parameters", "n")
 
     if not effects:
         # Ordinary gridworld
-        env = GridWorld(n_agents=n_agents, grid=init_grid)
+        env = GridWorld(n_agents=n, grid=init_grid)
+
     else:
         # Stochastic windy gridworld
         col_wind, range_random_wind, probabilities = read_env_config(config)
-        env = GridWorld(n_agents=n_agents, grid=init_grid, col_wind=col_wind,
+        env = GridWorld(n_agents=n, grid=init_grid, col_wind=col_wind,
                         range_random_wind=range_random_wind, probabilities=probabilities)
 
     env.read_reward_config(config)
@@ -200,7 +205,7 @@ def main(config: configparser.ConfigParser):
     # agent_1 = AgentSQN(2, window_size=grid_size, device=DEVICE)
     # agent_1 = AgentSQN(2, window_size=5, device=device, start=start_position)
     # agent_1 = AgentSQN(2, window_size=5, device=device, goal=goal)
-    agents, model = read_agents_config(config, env)
+    agents, coordinator, model = read_agents_config(config, env)
 
     ########
     # MAIN #
@@ -234,7 +239,7 @@ def main(config: configparser.ConfigParser):
     total_loss_s = []
     print("Start")
     try:
-        env.reset(reset_grid=True)  # put True if you want a random init grid
+        env.reset(reset_grid=False)  # put True if you want a random init grid
         env.render()
         plt.savefig(f"images/{now}.png")
         plt.show()
@@ -251,7 +256,7 @@ def main(config: configparser.ConfigParser):
         # train_period = train_period_s[0]
 
         reset_start_goal = True
-        reset_grid = True
+        reset_grid = False
 
         start_time = time.time()
 
@@ -261,59 +266,62 @@ def main(config: configparser.ConfigParser):
             #     train_period_index += 1
             #     print(f"New training period is {train_period} steps")
 
-            if episode <= 10000 and episode == radius_delays[radius_index]:
-                radius = radius_s[radius_index]
-                radius_index += 1
-                print(f"Radius increased to {radius} cells")
+            # if episode <= 10000 and episode == radius_delays[radius_index]:
+            #     radius = radius_s[radius_index]
+            #     radius_index += 1
+            #     print(f"Radius increased to {radius} cells")
 
             # if start_goal_period elapsed: change start and goal
             reset_start_goal = episode > 0 and episode % start_goal_reset_period == 0
 
             # if reset_grid_period elapsed: change grid
-            reset_grid = episode > 0 and episode % grid_reset_period == 0
+            # reset_grid = episode > 0 and episode % grid_reset_period == 0
 
-            obs = env.reset(reset_starts_goals=reset_start_goal, radius=radius, reset_grid=reset_grid)
-            reset_start_goal = False
-            reset_grid = False
+            obs = env.reset(reset_starts_goals=reset_start_goal, radius=grid_size, reset_grid=reset_grid)
 
             total_reward = 0
             total_loss = 0
 
             for step in range(steps):
                 # env.render()
+
+                # create new observations using the local obs of each agent and adding the pos and goal of other agents
+                obs = [torch.cat([obs[i]] + [obs[j][:, -2:] for j in range(len(agents)) if j != i], dim=1)
+                       for i in range(len(agents))]
+
                 # select and perform actions
-                actions = [agents[i].select_action(obs[i]) for i in range(len(env.agents))]
+                actions = [agents[i].select_action(obs[i]) for i in range(len(agents))]
                 new_obs, rewards, done, info = env.step(actions)
 
                 # store the transition in memory
-                for i in range(len(env.agents)):
+                for i in range(len(agents)):
                     agent = agents[i]
                     action = actions[i]
                     reward = torch.tensor([rewards[i]], device=DEVICE)
                     total_reward += reward.item()
-                    agent.add_to_buffer(obs[i], action, reward, new_obs[i], done[i])
+                    # compute new_observation the same way as before
+                    new_observation = torch.cat([new_obs[i]] + [obs[j][:, -2:] for j in range(len(agents)) if j != i],
+                                                dim=1)
+
+                    coordinator.add_to_buffer(obs[i], action, reward, new_observation, done[i])
 
                 # move to the next state
                 obs = new_obs
 
                 # Perform one step of the optimisation
                 if step_done > 0 and step_done % train_period == 0:
-                    for i in range(len(env.agents)):
-                        agent = agents[i]
-                        loss = agent.train()
-                        total_loss += loss * agent.batch_size
+                    loss = coordinator.train()
+                    total_loss += loss * coordinator.batch_size
 
                 step_done += 1
-
                 if all(done):
                     break
 
             # # Perform one step of the optimisation
             # if episode > 0 and episode % train_period == 0:
-            #     for i in range(len(env.agents)):
-            #         agent = agents[i]
-            #         loss = agent.train()
-            #         total_loss += loss * agent.batch_size
+            #     for i in range(len(agents)):
+            #         loss = coordinator.train()
+            #         total_loss += loss * coordinator.batch_size
 
             print(f"Episode {episode} finished after {step + 1} time steps")
 
@@ -351,7 +359,7 @@ def main(config: configparser.ConfigParser):
         with open(f"logs/configs/{now}.ini", "w") as configfile:
             config.write(configfile)
 
-        training_data = pd.DataFrame(data={"Cumulated Reward":cumulated_rewards,
+        training_data = pd.DataFrame(data={"Cumulated Reward": cumulated_rewards,
                                            "Loss": total_loss_s,
                                            "Total Steps": total_steps})
         training_data.to_csv(f"logs/csv/{now}.csv")
@@ -405,9 +413,9 @@ def main(config: configparser.ConfigParser):
         # plt.show()
 
         hyperparameters = create_hparams(config)
-        metric_dict_={
-            "Success Rate": improvement[-1]/len(total_steps),
-            "Mean Cumulated Reward": cumulated_reward/len(total_steps),
+        metric_dict_ = {
+            "Success Rate": improvement[-1] / len(total_steps),
+            "Mean Cumulated Reward": cumulated_reward / len(total_steps),
             "Mean Total Steps": np.mean(total_steps)
         }
         tb.add_hparams(hyperparameters, metric_dict=metric_dict_, run_name="")
@@ -420,5 +428,5 @@ def main(config: configparser.ConfigParser):
 
 if __name__ == '__main__':
     config = configparser.ConfigParser(allow_no_value=True)
-    config.read("config10.ini")
+    config.read("config10MARL.ini")
     main(config)

@@ -255,6 +255,21 @@ class Grid:  # not used yet
                 type_idx, arg = array[i, j]
                 # TODO : continue
 
+class GridworldAgent:
+    def __init__(self, agent_id, start, goal):
+        self.id = agent_id
+
+        # Position of the agent
+        self.init_pos = start
+        self.pos = start
+
+        # Position of its goal
+        self.init_goal = goal
+        self.goal = goal
+
+        # Boolean to know if the agent is done
+        self.done = False
+
 
 class GridWorld(gym.Env):
     """
@@ -281,18 +296,17 @@ class GridWorld(gym.Env):
         """Raised when an agent try to do an unknown action"""
         pass
 
-    def __init__(self, agents=None, grid=np.ones((5, 5)), partial_obs=False, width=5, height=5,
+    def __init__(self, n_agents=1, grid=np.ones((5, 5)), partial_obs=False, width=5, height=5,
                  col_wind=None, range_random_wind=0, probabilities=None):
 
-        if agents is None:
-            agents = []
-        self.agents = agents
+        self.agents = [GridworldAgent(i, None, None) for i in range(n_agents)]
         self.grid = grid  # TODO: make it random later -- DONE
 
         if probabilities is None and range_random_wind == 0:
             probabilities = [1]  # Zero noise
 
         # Define if the agents use partial observation or global observation
+        # partial obs broken, don't use it
         self.partial_obs = partial_obs
         if self.partial_obs:
             self.agent_view_width = width
@@ -301,7 +315,9 @@ class GridWorld(gym.Env):
         self.actions = GridWorld.LegalActions
         self.action_space = spaces.Discrete(len(self.actions))
 
-        self.observation_space = spaces.Box(low=0, high=1, shape=grid.shape, dtype='uint8')
+        self.observation_space = spaces.Box(low=0, high=1,
+                                            shape=(1, len(GridWorld.GridLegend) + (n_agents - 1) * 2, *grid.shape),   # (dim of encoding, dim of one observation + partial obs of all the other agents, grid width, grid height)
+                                            dtype='uint8')
 
         self.agents_initial_pos = [agent.pos for agent in self.agents]  # starting position of the agents on the grid
 
@@ -384,13 +400,13 @@ class GridWorld(gym.Env):
         #                                     start_bounds=start_bounds, goal_bounds=goal_bounds)
 
         # # whole grid ?
-        # start_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
-        # goal_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
-        # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-        #                                     start_bounds=start_bounds, goal_bounds=goal_bounds)
+        start_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
+        goal_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
+        starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
+                                            start_bounds=start_bounds, goal_bounds=goal_bounds)
 
         # # within a sub_grid ?
-        starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=radius))
+        # starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=radius))
         return starts, goals
 
     def trans_function(self, state, action, noise):
@@ -496,10 +512,18 @@ class GridWorld(gym.Env):
 
         # apply the moves (even if illegal)
         for i in range(len(self.agents)):
+            # agent mission is already done
+            if self.agents[i].done:
+                continue
+
             self.agents[i].pos = moves[i]
 
         # compute rewards and illegal assertions and cancel move if illegal
         for i in range(len(self.agents)):
+            # agent mission is already done
+            if self.agents[i].done:
+                continue
+
             # compute rewards and illegal assertions
             rewards[i], illegal = self._reward_agent(i)
 
@@ -508,7 +532,7 @@ class GridWorld(gym.Env):
                 self.agents[i].pos = old_pos[i]
 
         # game over if all the agents are done
-        done = all(agent.done for agent in self.agents)
+        done = [agent.done for agent in self.agents]
 
         # compute observation
         obs = self.gen_obs()
@@ -542,19 +566,18 @@ class GridWorld(gym.Env):
         else:
             canvas = self.grid.copy()
 
-            for a in self.agents:
-                canvas[a.pos] = self.GridLegend.AGENT
+            canvas[agent.pos] = self.GridLegend.AGENT  # TODO: add other agents in the local obs of single agents
 
             # only mark the goal of the agent (not the ones of the others)
             canvas[agent.goal] = self.GridLegend.GOAL
 
             # Convert to len(dict)-dimensional tensor for Conv_SQN. Can turn on or off
             if tensor == 1:
-                canvas = self.grid2tensor(canvas, agent)
+                canvas = self.grid2tensor(canvas)
 
             return canvas
 
-    def eval_value_func(self, agent_id, model):
+    def eval_value_func(self, agent, model):
         """Function to evaluate the value of each position in the grid,
         given a unique agent ID (context for values)"""
 
@@ -590,7 +613,7 @@ class GridWorld(gym.Env):
 
             canvas = grid.copy()
 
-            observation = self.grid2tensor(canvas, self.agents[0]).to(self.agents[0].device)
+            observation = self.grid2tensor(canvas)
 
             with torch.no_grad():
 
@@ -764,9 +787,10 @@ class GridWorld(gym.Env):
 
         return rn_gen, seed
 
-    def grid2tensor(self, grid, agent):
+    def grid2tensor(self, grid):
         """Function to convert the observation into a n-dimensional grid according to the dict. size
          such that each grid has 1 at the position of the corresponding dict item. Needed for Conv_SQN"""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         key_grids = []
 
@@ -776,7 +800,7 @@ class GridWorld(gym.Env):
             key_grid[idx] = 1
             key_grids.append(key_grid)
 
-        obs = torch.Tensor(key_grids).to(agent.device)
+        obs = torch.as_tensor(key_grids, device=device)
         obs = obs.reshape(1, len(self.GridLegend), grid.shape[0], grid.shape[1])
 
         return obs

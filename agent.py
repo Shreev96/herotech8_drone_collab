@@ -31,6 +31,8 @@ class AgentBase:
         # ID of the agent (represents the integer number to look for on the grid
         self.id = i
 
+        self.grid_object = None
+
         # Position of the agent
         self.init_pos = start
         self.pos = start

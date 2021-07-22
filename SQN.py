@@ -12,15 +12,15 @@ from NN import Conv2D_NN
 
 class AgentSQN(AgentBase):
 
-    def __init__(self, i, window_size, device, start=None, goal=None, config=None):
+    def __init__(self, i, obs_shape, device, start=None, goal=None, config=None):
         super().__init__(i, device, start, goal)
 
         # SQL stuff
-        self.policy_model = Conv2D_NN(device=self.device, dict_size=len(self.GridLegend),
-                                      window_size=window_size, num_actions=len(self.actions)).to(self.device)
+        self.policy_model = Conv2D_NN(device=self.device, dict_size=obs_shape[1],
+                                      window_size=obs_shape[-1], num_actions=len(self.actions)).to(self.device)
 
-        self.target_model = Conv2D_NN(device=self.device, dict_size=len(self.GridLegend),
-                                      window_size=window_size, num_actions=len(self.actions)).to(self.device)
+        self.target_model = Conv2D_NN(device=self.device, dict_size=obs_shape[1],
+                                      window_size=obs_shape[-1], num_actions=len(self.actions)).to(self.device)
 
         self.target_model.load_state_dict(self.policy_model.state_dict())
         self.target_model.eval()
@@ -122,3 +122,18 @@ class AgentSQN(AgentBase):
     def load(self, path):
         self.policy_model.load_state_dict(torch.load(path))
         self.target_model.load_state_dict(self.policy_model.state_dict())
+
+
+class CoordinatorSQN(AgentSQN):
+    def __init__(self, agents, obs_shape, device, config=None):
+        super().__init__(0, obs_shape, device, start=None, goal=None, config=config)
+        self.agents = agents
+
+    def train(self) -> float:
+        loss = super().train()
+
+        if self._learned_steps % self.update_steps == 0:
+            for agent in self.agents:
+                agent.target_model.load_state_dict(self.target_model.state_dict())
+
+        return loss

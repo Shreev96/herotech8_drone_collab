@@ -13,16 +13,16 @@ from NN import Conv2D_NN
 
 class AgentDQN(AgentBase):
 
-    def __init__(self, i, window_size, device, start=None, goal=None, config=None):
+    def __init__(self, i, obs_shape, device, start=None, goal=None, config=None):
         # ID of the agent (represents the integer number to look for on the grid
         super().__init__(i, device, start, goal)
 
         # DQN model initialisation
-        self.policy_model = Conv2D_NN(device=self.device, dict_size=len(self.GridLegend),
-                                      window_size=window_size, num_actions=len(self.actions)).to(self.device)
+        self.policy_model = Conv2D_NN(device=self.device, dict_size=obs_shape[1],
+                                      window_size=obs_shape[-1], num_actions=len(self.actions)).to(self.device)
 
-        self.target_model = Conv2D_NN(device=self.device, dict_size=len(self.GridLegend),
-                                      window_size=window_size, num_actions=len(self.actions)).to(self.device)
+        self.target_model = Conv2D_NN(device=self.device, dict_size=obs_shape[1],
+                                      window_size=obs_shape[-1], num_actions=len(self.actions)).to(self.device)
 
         self.target_model.load_state_dict(self.policy_model.state_dict())
         self.target_model.eval()
