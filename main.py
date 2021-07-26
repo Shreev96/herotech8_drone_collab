@@ -234,7 +234,7 @@ def main(config: configparser.ConfigParser):
     total_loss_s = []
     print("Start")
     try:
-        env.reset(reset_grid=True)  # put True if you want a random init grid
+        env.reset(reset_grid=False)  # put True if you want a random init grid
         env.render()
         plt.savefig(f"images/{now}.png")
         plt.show()
@@ -251,7 +251,7 @@ def main(config: configparser.ConfigParser):
         # train_period = train_period_s[0]
 
         reset_start_goal = True
-        reset_grid = True
+        reset_grid = False
 
         start_time = time.time()
 
@@ -261,16 +261,16 @@ def main(config: configparser.ConfigParser):
             #     train_period_index += 1
             #     print(f"New training period is {train_period} steps")
 
-            if episode <= 10000 and episode == radius_delays[radius_index]:
-                radius = radius_s[radius_index]
-                radius_index += 1
-                print(f"Radius increased to {radius} cells")
+            # if episode <= 10000 and episode == radius_delays[radius_index]:
+            #     radius = radius_s[radius_index]
+            #     radius_index += 1
+            #     print(f"Radius increased to {radius} cells")
 
             # if start_goal_period elapsed: change start and goal
             reset_start_goal = episode > 0 and episode % start_goal_reset_period == 0
 
             # if reset_grid_period elapsed: change grid
-            reset_grid = episode > 0 and episode % grid_reset_period == 0
+            # reset_grid = episode > 0 and episode % grid_reset_period == 0
 
             obs = env.reset(reset_starts_goals=reset_start_goal, radius=radius, reset_grid=reset_grid)
             reset_start_goal = False

@@ -369,12 +369,12 @@ class GridWorld(gym.Env):
 
             for i in range(len(self.agents)):
                 agent = self.agents[i]
-                agent.pos = starts[i]
                 agent.init_pos = starts[i]
-                agent.goal = goals[i]
                 agent.init_goal = goals[i]
 
         for agent in self.agents:
+            agent.pos = agent.init_pos
+            agent.goal = agent.init_goal
             agent.done = False
 
         # self.render()  # show the initial arrangement of the grid
@@ -459,7 +459,7 @@ class GridWorld(gym.Env):
               or (n, m) in [self.agents[j].pos for j in range(len(self.agents)) if j != i]):  # other agents
             reward = self.rewards["obstacles"]
             illegal = True
-            # agent.done = True
+            agent.done = True
 
         # check if agent reached its goal
         elif (n, m) == agent.goal:
@@ -519,16 +519,18 @@ class GridWorld(gym.Env):
             self.agents[i].pos = moves[i]
 
         # compute rewards and illegal assertions and cancel move if illegal
+        illegals = [False for agent in self.agents]
         for i in range(len(self.agents)):
             # agent mission is already done
             if self.agents[i].done:
                 continue
 
             # compute rewards and illegal assertions
-            rewards[i], illegal = self._reward_agent(i)
+            rewards[i], illegals[i] = self._reward_agent(i)
 
-            # cancel move if illegal
-            if illegal:
+        # cancel moves if illegal
+        for i in range(len(self.agents)):
+            if illegals[i]:
                 self.agents[i].pos = old_pos[i]
 
         # game over if all the agents are done
@@ -730,20 +732,24 @@ class GridWorld(gym.Env):
         if not value_func:
 
             canvas = self.grid.copy().astype(float)
-
+            masks = []
             for agent in self.agents:
                 # mark the visited cells in 0.6 gray
                 # canvas[tuple(self.agents_visited_cells[agent])] = 0.6
-
+                mask = np.ones(canvas.shape)
                 # mark the terminal states in 0.9 gray
                 canvas[agent.goal] = 0.7
-
+                mask[agent.goal] = 0
                 if not policy:
                     # mark the current position in 0.3 gray
                     canvas[agent.pos] = 0.3
+                    mask[agent.pos] = 0
+                masks.append(mask)
 
             if mode == "human":
                 plt.grid("on")
+
+                cmaps = ['Purples', 'Blues', 'Greens', 'Oranges', 'Reds']
 
                 ax = plt.gca()
                 rows, cols = self.grid.shape
@@ -753,6 +759,12 @@ class GridWorld(gym.Env):
                 ax.set_yticklabels([])
 
                 ax.imshow(canvas, interpolation='none', cmap='binary')
+
+                from numpy.ma import masked_array
+                for i in range(len(self.agents)):
+                    im = masked_array(canvas, masks[i])
+                    ax.imshow(im, interpolation="none", cmap=cmaps[i])
+
             else:
                 super(GridWorld, self).render(mode=mode)  # just raise an exception for not Implemented mode
 
@@ -805,13 +817,11 @@ class GridWorld(gym.Env):
 
         return obs
 
-    def save(self, directory, datetime):
-        for agent in self.agents:
-            agent.save(f"{directory}/{datetime}_{agent.id}.pt")
+    # def save(self, directory, datetime):
+    #     for agent in self.agents:
+    #         agent.save(f"{directory}/{datetime}_{agent.id}.pt")
 
-    def read_reward_config(self, config_file):
-        config = configparser.ConfigParser()
-        config.read(config_file)
+    def read_reward_config(self, config):
         grid_param = config["Gridworld Parameters"]
         self.rewards["free"] = grid_param.getfloat("FREE", self.rewards["free"])
         self.rewards["goal"] = grid_param.getfloat("GOAL", self.rewards["goal"])

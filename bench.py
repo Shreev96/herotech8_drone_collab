@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from main import main
+from main_MARL import main
 import configparser
 import itertools
 
@@ -10,13 +10,13 @@ import shutil
 def bench1():
     hyperparameters = {
         "steps" : [100],
-        "episodes" : [20500],
+        "episodes" : [10000],
         "train_period" : [5],
         "start_goal_reset_period" : [1],
         "grid_reset_period" : [20],
 
-        "alpha" : [0.1],
-        "update_period" : [100],
+        "alpha" : [0.05, 0.1, 1.0],
+        "update_period" : [3],
         "batch_size" : [512],
 
         # rewards:
@@ -31,7 +31,7 @@ def bench1():
     grid_size = 10
 
     config = configparser.ConfigParser(allow_no_value=True)
-    config.read("config10.ini")
+    config.read("config10MARL.ini")
     config["Grid Parameters"]["grid_size"] = str(grid_size)
 
     total_len = len(list(itertools.product(*params_values)))
