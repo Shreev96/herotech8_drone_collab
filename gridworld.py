@@ -459,7 +459,7 @@ class GridWorld(gym.Env):
               or (n, m) in [self.agents[j].pos for j in range(len(self.agents)) if j != i]):  # other agents
             reward = self.rewards["obstacles"]
             illegal = True
-            agent.done = True
+            # agent.done = True
 
         # check if agent reached its goal
         elif (n, m) == agent.goal:
@@ -568,16 +568,34 @@ class GridWorld(gym.Env):
         else:
             canvas = self.grid.copy()
 
-            canvas[agent.pos] = self.GridLegend.AGENT  # TODO: add other agents in the local obs of single agents
+            # canvas[agent.pos] = self.GridLegend.AGENT  # TODO: add other agents in the local obs of single agents
 
-            # only mark the goal of the agent (not the ones of the others)
-            canvas[agent.goal] = self.GridLegend.GOAL
+            # # only mark the goal of the agent (not the ones of the others)
+            # canvas[agent.goal] = self.GridLegend.GOAL
 
-            # Convert to len(dict)-dimensional tensor for Conv_SQN. Can turn on or off
-            if tensor == 1:
-                canvas = self.grid2tensor(canvas)
+            # # Convert to len(dict)-dimensional tensor for Conv_SQN. Can turn on or off
+            # if tensor == 1:
+            #     canvas = self.grid2tensor(canvas)
 
-            return canvas
+            # return canvas
+
+            key_grids = []
+
+            for key in self.GridLegend:
+                idx = np.where(canvas == key)
+                key_grid = np.zeros(canvas.shape)
+                key_grid[idx] = 1
+                if key == self.GridLegend.AGENT:
+                      key_grid[agent.pos] = 1  # TODO: add other agents in the local obs of single agents
+                elif key == self.GridLegend.GOAL:
+                    key_grid[agent.goal] = 1  # only mark the goal of the agent (not the ones of the others)
+                key_grids.append(key_grid)
+
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            obs = torch.as_tensor(key_grids, device=device)
+            obs = obs.reshape(1, len(self.GridLegend), canvas.shape[0], canvas.shape[1])
+
+            return obs
 
     def eval_value_func(self, agent, model):
         """Function to evaluate the value of each position in the grid,
@@ -749,7 +767,7 @@ class GridWorld(gym.Env):
             if mode == "human":
                 plt.grid("on")
 
-                cmaps = ['Purples', 'Blues', 'Greens', 'Oranges', 'Reds']
+                cmaps = ['Purples', 'Greens', 'Oranges', 'Reds', 'Blues']
 
                 ax = plt.gca()
                 rows, cols = self.grid.shape
@@ -763,7 +781,7 @@ class GridWorld(gym.Env):
                 from numpy.ma import masked_array
                 for i in range(len(self.agents)):
                     im = masked_array(canvas, masks[i])
-                    ax.imshow(im, interpolation="none", cmap=cmaps[i])
+                    ax.imshow(im, vmin=0, vmax=1, interpolation="none", cmap=cmaps[i])
 
             else:
                 super(GridWorld, self).render(mode=mode)  # just raise an exception for not Implemented mode

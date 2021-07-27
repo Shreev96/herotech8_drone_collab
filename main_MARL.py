@@ -239,11 +239,11 @@ def main(config: configparser.ConfigParser):
     total_loss_s = []
     print("Start")
     try:
-        env.agents[0].init_pos = (0,2)
-        env.agents[1].init_pos = (9,2)
-        env.agents[0].init_goal = (9,7)
-        env.agents[1].init_goal = (0,7)
-        env.reset(reset_starts_goals=False, reset_grid=False)  # put True if you want a random init grid
+        # env.agents[0].init_pos = (0,2)
+        # env.agents[1].init_pos = (0,7)
+        # env.agents[0].init_goal = (9,2)
+        # env.agents[1].init_goal = (9,7)
+        env.reset(reset_starts_goals=True, reset_grid=False)  # put True if you want a random init grid
         env.render()
         plt.savefig(f"images/{now}.png")
         plt.show()
@@ -259,7 +259,7 @@ def main(config: configparser.ConfigParser):
         # train_period_index = 0
         # train_period = train_period_s[0]
 
-        reset_start_goal = False
+        reset_start_goal = True 
         reset_grid = False
 
         start_time = time.time()
@@ -276,7 +276,7 @@ def main(config: configparser.ConfigParser):
             #     print(f"Radius increased to {radius} cells")
 
             # if start_goal_period elapsed: change start and goal
-            # reset_start_goal = episode > 0 and episode % start_goal_reset_period == 0
+            reset_start_goal = episode > 0 and episode % start_goal_reset_period == 0
 
             # if reset_grid_period elapsed: change grid
             # reset_grid = episode > 0 and episode % grid_reset_period == 0
@@ -308,20 +308,21 @@ def main(config: configparser.ConfigParser):
                         reward = torch.tensor([rewards[i]], device=DEVICE)
                         total_reward[i] += reward.item()
                         # compute new_observation the same way as before
-                        new_observation = torch.cat([new_obs[i]] + [obs[j][:, -2:] for j in range(len(agents)) if j != i],
+                        new_observation = torch.cat([new_obs[i]] + [new_obs[j][:, -2:] for j in range(len(agents)) if j != i],
                                                     dim=1)
 
                         coordinator.add_to_buffer(obs[i], action, reward, new_observation, done[i])
 
                         if done[i]:
                             # if agent mission is done, remove it from working agents (to prevent adding future transitions)
+                            print(f"Agent {i} is done after {step + 1} time steps")
                             working_agents.remove(agent)
 
                 # move to the next state
                 obs = new_obs
 
                 # Perform one step of the optimisation
-                if step_done > 0 and step_done % train_period == 0:
+                if episode > 300 and step_done > 0 and step_done % train_period == 0:
                     loss = coordinator.train()
                     total_loss += loss * coordinator.batch_size
 

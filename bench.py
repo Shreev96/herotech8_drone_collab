@@ -15,8 +15,8 @@ def bench1():
         "start_goal_reset_period" : [1],
         "grid_reset_period" : [20],
 
-        "alpha" : [0.05, 0.1, 1.0],
-        "update_period" : [3],
+        "alpha" : [0.05],
+        "update_period" : [5],
         "batch_size" : [512],
 
         # rewards:

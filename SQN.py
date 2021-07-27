@@ -132,8 +132,8 @@ class CoordinatorSQN(AgentSQN):
     def train(self) -> float:
         loss = super().train()
 
-        if self._learned_steps % self.update_steps == 0:
-            for agent in self.agents:
-                agent.target_model.load_state_dict(self.target_model.state_dict())
+        # if self._learned_steps % self.update_steps == 0:
+        for agent in self.agents:
+            agent.policy_model.load_state_dict(self.policy_model.state_dict())
 
         return loss
