@@ -74,3 +74,29 @@ def random_start_goal_in_subsquare(width=10, sub_width=10):
     _goal_bounds = ((top_x, top_x + sub_width), (top_y, top_y + sub_width))
 
     return random_start_goal(width=width, start_bounds=_start_bounds, goal_bounds=_goal_bounds)
+
+def random_starts_goals_in_subsquare(n, width=10, sub_width=10):
+    """Place a random subsquare within a grid and return a random distinct start and goal positions within this square"
+
+        :param n: number of start/goal couple to create
+        :param width: width of the grid
+        :param sub_width: width of the square within the grid
+        :return: random start and goal coordinates"""
+
+    assert n*2 <= sub_width*sub_width, f"can't place n distincts starts and goals in a sub square of size {sub_width}"
+
+    (top_x, top_y) = (random.randrange(0, width-sub_width+1), random.randrange(0, width-sub_width+1))
+    _start_bounds = ((top_x, top_x + sub_width), (top_y, top_y + sub_width))
+    _goal_bounds = ((top_x, top_x + sub_width), (top_y, top_y + sub_width))
+
+    starts = set()
+    while len(starts) < n:
+        starts.add((random.randrange(*_start_bounds[0]), random.randrange(*_start_bounds[1])))
+    
+    goals = set()
+    while len(goals) < n:
+        goal = (random.randrange(*_goal_bounds[0]), random.randrange(*_goal_bounds[1]))
+        if goal not in starts:
+            goals.add(goal)
+    
+    return list(starts), list(goals)

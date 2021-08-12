@@ -16,14 +16,15 @@ def bench1():
         "grid_reset_period" : [20],
 
         "alpha" : [0.05],
-        "update_period" : [5],
+        "update_period" : [3],
         "batch_size" : [512],
 
         # rewards:
         "FREE" : [-0.01],
         "GOAL" : [10.0],
         # "OUT_OF_BOUNDS" : [-0.1],
-        "OBSTACLES" : [-1.0]
+        "OBSTACLES" : [-1.0],
+        "BATTERY_DEPLETED" : [-5.0]
     }
 
     params_values = [v for v in hyperparameters.values()]
@@ -39,7 +40,7 @@ def bench1():
     run_number = 0
     for (steps, episodes, train_period, start_goal_reset_period, grid_reset_period, 
         alpha, update_period, batch_size,
-        free, goal, obstacle) in itertools.product(*params_values):
+        free, goal, obstacle, battery) in itertools.product(*params_values):
 
         run_number += 1
         config["RL Parameters"]["steps"] = str(steps)
@@ -54,8 +55,9 @@ def bench1():
 
         config["Gridworld Parameters"]["FREE"] = str(free)
         config["Gridworld Parameters"]["GOAL"] = str(goal)
-        config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(free)  # TODO : for now
+        config["Gridworld Parameters"]["OUT_OF_BOUNDS"] = str(free)  # TODO : for now equal to free moves
         config["Gridworld Parameters"]["OBSTACLE"] = str(obstacle)
+        config["Gridworld Parameters"]["BATTERY_DEPLETED"] = str(battery)
 
         print(f"Run {run_number} on {total_len}")
         main(config)

@@ -237,13 +237,20 @@ def main(config: configparser.ConfigParser):
     cumulated_rewards = []
     total_steps = []
     total_loss_s = []
+
+    times = []
+
+    # save config file in logs with good datetime
+    with open(f"logs/configs/{now}.ini", "w") as configfile:
+        config.write(configfile)
+
     print("Start")
     try:
-        # env.agents[0].init_pos = (0,2)
-        # env.agents[1].init_pos = (0,7)
-        # env.agents[0].init_goal = (9,2)
-        # env.agents[1].init_goal = (9,7)
-        env.reset(reset_starts_goals=True, reset_grid=False)  # put True if you want a random init grid
+        # env.agents[0].init_pos = (0,0)
+        # env.agents[0].init_goal = (9,9)
+        # env.gcs = (1,4)
+        # env.grid[env.gcs] = env.GridLegend.GCS
+        obs = env.reset(reset_starts_goals=True, reset_grid=True)  # put reset_grid=True if you want a random init grid
         env.render()
         plt.savefig(f"images/{now}.png")
         plt.show()
@@ -252,7 +259,8 @@ def main(config: configparser.ConfigParser):
         train_period_delay_s = np.linspace(start=0, stop=8000, num=50, endpoint=True, dtype=int)
 
         radius_s = np.linspace(start=2, stop=10, num=9, endpoint=True, dtype=int)
-        radius_delays = np.linspace(start=0, stop=20000, num=9, endpoint=True, dtype=int)
+        radius_delays = np.linspace(start=0, stop=16000, num=9, endpoint=True, dtype=int)
+        print(radius_delays)
         radius_index = 0
         radius = radius_s[0]
 
@@ -270,10 +278,10 @@ def main(config: configparser.ConfigParser):
             #     train_period_index += 1
             #     print(f"New training period is {train_period} steps")
 
-            # if episode <= 10000 and episode == radius_delays[radius_index]:
-            #     radius = radius_s[radius_index]
-            #     radius_index += 1
-            #     print(f"Radius increased to {radius} cells")
+            if episode <= 16000 and episode == radius_delays[radius_index]:
+                radius = radius_s[radius_index]
+                radius_index += 1
+                print(f"Radius increased to {radius} cells")
 
             # if start_goal_period elapsed: change start and goal
             reset_start_goal = episode > 0 and episode % start_goal_reset_period == 0
@@ -281,7 +289,7 @@ def main(config: configparser.ConfigParser):
             # if reset_grid_period elapsed: change grid
             # reset_grid = episode > 0 and episode % grid_reset_period == 0
 
-            obs = env.reset(reset_starts_goals=reset_start_goal, radius=grid_size, reset_grid=reset_grid)
+            obs = env.reset(reset_starts_goals=reset_start_goal, radius=3, reset_grid=reset_grid)
 
             working_agents = set(agents)  # set of agents with on-going mission
 
@@ -315,14 +323,20 @@ def main(config: configparser.ConfigParser):
 
                         if done[i]:
                             # if agent mission is done, remove it from working agents (to prevent adding future transitions)
-                            print(f"Agent {i} is done after {step + 1} time steps")
+                            reason = ""
+                            if reward == env.rewards["goal"]:
+                                reason = "REACHED GOAL"
+                            elif reward == env.rewards["battery_depleted"]:
+                                reason = "BATTERY DEPLETED"
+
+                            print(f"Agent {i} is done after {step + 1} time steps ({reason})")
                             working_agents.remove(agent)
 
                 # move to the next state
                 obs = new_obs
 
                 # Perform one step of the optimisation
-                if episode > 300 and step_done > 0 and step_done % train_period == 0:
+                if step_done > 0 and step_done % train_period == 0:
                     loss = coordinator.train()
                     total_loss += loss * coordinator.batch_size
 
@@ -344,6 +358,8 @@ def main(config: configparser.ConfigParser):
             cumulated_reward += np.array(total_reward)
             cumulated_rewards.append(cumulated_reward.copy())
 
+            times.append(time.time() - start_time)
+
             # Tensorboard logging
 
             # for agent in agents:
@@ -358,6 +374,33 @@ def main(config: configparser.ConfigParser):
             tb.add_scalar("Total Reward", total_reward[0], episode)
             tb.add_scalar("Cumulated Reward", cumulated_reward[0], episode)
             tb.add_scalar("Total steps", step + 1, episode)
+
+            if episode > 0 and episode % 10000 == 0:
+                t_rwd_s = np.array(total_reward_s)
+                
+                for agent in agents:
+                    agent.save(f"logs/models/{now}_{agent.id}_{episode}.pt")
+                
+                data = {"Loss": total_loss_s,
+                        "Total Steps": total_steps,
+                        "Times": times}
+                for i in range(len(agents)):
+                    data[f"Total Reward per episode {i}"] = t_rwd_s[:, i]
+
+                training_data = pd.DataFrame(data=data)
+                training_data.to_csv(f"logs/csv/{now}.csv")
+
+                # save cumulated reward plot
+                plt.clf()
+                fig, ax = plt.subplots(nrows=len(agents), ncols=1, sharex=True, sharey=True, squeeze=0)
+                fig.suptitle(("Cumulated Reward per episode for " + model))
+                for i in range(len(agents)):
+                    ax[i, 0].set_title(f"Agent {i}")
+                    ax[i, 0].plot(t_rwd_s[:,i])
+                plt.xlabel("Epochs")
+                plt.savefig(f"logs/cumulated_rewards/{now}.png")
+                tb.add_figure("Cumulated Reward Plot", plt.gcf())
+                plt.clf()
 
         print("Complete")
         print("--- %s seconds ---" % (time.time() - start_time))
@@ -376,7 +419,8 @@ def main(config: configparser.ConfigParser):
             config.write(configfile)
 
         data = {"Loss": total_loss_s,
-                "Total Steps": total_steps}
+                "Total Steps": total_steps,
+                "Times": times}
         for i in range(len(agents)):
             data[f"Total Reward per episode {i}"] = total_reward_s[:, i]
 
@@ -385,11 +429,11 @@ def main(config: configparser.ConfigParser):
 
         # save cumulated reward plot
         plt.clf()
-        fig, ax = plt.subplots(nrows=2, ncols=1, sharex=True, sharey=True)
+        fig, ax = plt.subplots(nrows=len(agents), ncols=1, sharex=True, sharey=True, squeeze=0)
         fig.suptitle(("Cumulated Reward per episode for " + model))
         for i in range(len(agents)):
-            ax[i].set_title(f"Agent {i}")
-            ax[i].plot(total_reward_s[:,i])
+            ax[i, 0].set_title(f"Agent {i}")
+            ax[i, 0].plot(total_reward_s[:,i])
         plt.xlabel("Epochs")
         plt.savefig(f"logs/cumulated_rewards/{now}.png")
         tb.add_figure("Cumulated Reward Plot", plt.gcf())
@@ -420,6 +464,14 @@ def main(config: configparser.ConfigParser):
         plt.savefig(f"logs/improvement/{now}.png")
         tb.add_figure("Improvement Plot", plt.gcf())
         plt.clf()
+
+        # save times plot
+        plt.title("Times per episodes")
+        plt.xlabel("Epochs")
+        plt.plot(times)
+        plt.savefig(f"logs/times/{now}.png")
+        plt.clf()
+
 
         # plt.figure()
         # # evaluate value function for agent 1 (id = 0) and display

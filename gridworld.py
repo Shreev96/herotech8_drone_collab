@@ -13,7 +13,7 @@ from gym.utils import seeding
 
 from grid_generators.random_maze import random_maze
 from grid_generators.random_shape_maze import random_shape_maze
-from grid_generators.random_start_goal import random_start_goal, random_starts_goals, random_start_goal_in_subsquare
+from grid_generators.random_start_goal import random_start_goal, random_starts_goals, random_starts_goals_in_subsquare
 from rendering import fill_coords, point_in_rect, highlight_img, downsample
 
 from copy import deepcopy
@@ -256,6 +256,8 @@ class Grid:  # not used yet
                 # TODO : continue
 
 class GridworldAgent:
+    BATTERY = 150
+
     def __init__(self, agent_id, start, goal):
         self.id = agent_id
 
@@ -266,6 +268,9 @@ class GridworldAgent:
         # Position of its goal
         self.init_goal = goal
         self.goal = goal
+
+        # Battery
+        self.battery = GridworldAgent.BATTERY  # percent
 
         # Boolean to know if the agent is done
         self.done = False
@@ -288,8 +293,9 @@ class GridWorld(gym.Env):
     class GridLegend(IntEnum):
         # FREE = 0
         OBSTACLE = 1
-        AGENT = 2
-        GOAL = 3
+        GCS = 2 # ground charging stations
+        AGENT = 3
+        GOAL = 4
         # OUT_OF_BOUNDS = 6  # Commented out for now since it interferes with the conv-net input tensor
 
     class UnknownAction(Exception):
@@ -300,7 +306,8 @@ class GridWorld(gym.Env):
                  col_wind=None, range_random_wind=0, probabilities=None):
 
         self.agents = [GridworldAgent(i, None, None) for i in range(n_agents)]
-        self.grid = grid  # TODO: make it random later -- DONE
+        self.grid = grid
+        self.gcs = np.where(grid == self.GridLegend.GCS) # Ground charging station
 
         if probabilities is None and range_random_wind == 0:
             probabilities = [1]  # Zero noise
@@ -340,30 +347,60 @@ class GridWorld(gym.Env):
         self.rewards = {"free": -0.04,
                         "obstacles": -0.75,
                         "goal": 10.0,
-                        "out_of_bounds": -0.8}
+                        "out_of_bounds": -0.8,
+                        "battery_depleted": -10.0}
 
     def reset(self, reset_starts_goals=True, radius=10, reset_grid=True):
         if reset_grid:
             _grid = self._gen_grid(*self.grid.shape)
-            if not reset_starts_goals:
-                starts, goals = (agent.init_pos for agent in self.agents), (agent.init_goal for agent in self.agents)
+            gcs = (random.randrange(0, self.grid.shape[0]), random.randrange(0, self.grid.shape[1]))
 
-                tries = 0  # just to protect from the very unlikely case of an infinite loop
-                while tries < 100 and any(_grid[start] for start in starts) or any(_grid[goal] for goal in goals):
-                    # if any of the generated obstacles is on one of the goal or start positions :
-                    # generate new obstacles
-                    _grid = self._gen_grid(*self.grid.shape)
-                if tries == 100:
-                    _grid = np.zeros(self.grid.shape)
+            # following loop is potentially infinite
+            while (_grid[gcs]  # if the gcs is on one of the generated obstacle
+                  and (reset_starts_goals  # if we will reset starts and goal no need to go further
+                      or (any(_grid[agent.init_pos]  # if any of the generated obstacles is on one of the start position
+                              or _grid[agent.init_goal]  # or one of the goal position 
+                              or abs(gcs[0] - agent.init_pos[0]) + abs(gcs[1] - agent.init_pos[1]) > 10  # or the generated gcs is out of range from the starting position
+                              or abs(gcs[0] - agent.init_goal[0]) + abs(gcs[1] - agent.init_goal[1]) > 10  # or the goal is out of range from the gcs
+                              for agent in self.agents)))):
+                # generate new obstacles and gcs
+                _grid = self._gen_grid(*self.grid.shape)
+                gcs = (random.randrange(0, self.grid.shape[0]), random.randrange(0, self.grid.shape[1]))
+
+            # if not reset_starts_goals:
+            #     starts, goals = (agent.init_pos for agent in self.agents), (agent.init_goal for agent in self.agents)
+
+            #     tries = 0  # just to protect from the very unlikely case of an infinite loop
+            #     while tries < 100 and any(_grid[start] for start in starts) or any(_grid[goal] for goal in goals):
+            #         # if any of the generated obstacles is on one of the goal or start positions :
+            #         # generate new obstacles
+            #         _grid = self._gen_grid(*self.grid.shape)
+            #     if tries == 100:
+            #         _grid = np.zeros(self.grid.shape)
+            
+            _grid[gcs] = self.GridLegend.GCS
             self.grid = _grid
-            print(f"New grid generated")
+            self.gcs = gcs
+            print(f"New grid generated, gcs is in {gcs}")
 
+        
+        
         if reset_starts_goals:
             starts, goals = self._gen_starts_goals_positions(radius)
 
-            while any(self.grid[start] for start in starts) or any(self.grid[goal] for goal in goals):
-                # if any of the generated position is on one of the obstacles : generate new positions
+            # following loop is potentially infinite
+            while (any(self.grid[start]  # if any of the start position is on an obstacle
+                      or abs(self.gcs[0] - start[0]) + abs(self.gcs[1] - start[1]) > 10  # or out of range of the gcs
+                      for start in starts)
+                  or any(self.grid[goal]  # if any of the goal position is on an obstacle
+                        or abs(self.gcs[0] - goal[0]) + abs(self.gcs[1] - goal[1]) > 10 # or out of range of the gcs
+                        for goal in goals)):
+                # generate new positions
                 starts, goals = self._gen_starts_goals_positions(radius)
+
+            # while (any(self.grid[start] for start in starts) or any(self.grid[goal] for goal in goals)):
+            #     # if any of the generated position is on one of the obstacles : generate new positions
+            #     starts, goals = self._gen_starts_goals_positions(radius)
 
             print(f"New starts are {starts} and new goals are {goals}")
 
@@ -376,6 +413,7 @@ class GridWorld(gym.Env):
             agent.pos = agent.init_pos
             agent.goal = agent.init_goal
             agent.done = False
+            agent.battery = GridworldAgent.BATTERY
 
         # self.render()  # show the initial arrangement of the grid
 
@@ -386,7 +424,8 @@ class GridWorld(gym.Env):
         """Generate a new grid"""
 
         # _grid = random_shape_maze(width, height, max_shapes=5, max_size=3, allow_overlap=False)
-        _grid = np.genfromtxt(random.choice(glob.glob("sample_grid/*.csv")), delimiter=',')
+        # _grid = np.genfromtxt(random.choice(glob.glob("sample_grid/*.csv")), delimiter=',')
+        _grid = np.zeros(self.grid.shape)
 
         return _grid
 
@@ -400,13 +439,31 @@ class GridWorld(gym.Env):
         #                                     start_bounds=start_bounds, goal_bounds=goal_bounds)
 
         # # whole grid ?
-        start_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
-        goal_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
-        starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-                                            start_bounds=start_bounds, goal_bounds=goal_bounds)
+        # start_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
+        # goal_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
+        # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
+        #                                     start_bounds=start_bounds, goal_bounds=goal_bounds)
 
         # # within a sub_grid ?
-        # starts, goals = zip(random_start_goal_in_subsquare(width=self.grid.shape[0], sub_width=radius))
+        # starts, goals = random_starts_goals_in_subsquare(n=len(self.agents), width=self.grid.shape[0], sub_width=radius)
+
+        # goal around gcs ?
+        if radius >= self.grid.shape[0]:
+            start_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
+            goal_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
+        else:
+            x,y = self.gcs[0], self.gcs[1]
+            top_x = x-radius+1 if x-radius+1>=0 else 0
+            top_y = y-radius+1 if y-radius+1>=0 else 0
+            bottom_x = x+radius if x+radius-1<self.grid.shape[0] else self.grid.shape[0]
+            bottom_y = y+radius if y+radius-1<self.grid.shape[1] else self.grid.shape[1]
+
+            start_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
+            goal_bounds = ((top_x, bottom_x), (top_y, bottom_y))
+        
+        starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
+                                            start_bounds=start_bounds, goal_bounds=goal_bounds)
+        
         return starts, goals
 
     def trans_function(self, state, action, noise):
@@ -443,13 +500,14 @@ class GridWorld(gym.Env):
     def _reward_agent(self, i):
         """ compute the reward for the i-th agent in the current state"""
         illegal = False
+        done = False
         agent = self.agents[i]
         (n, m) = agent.pos
 
         # check for out of bounds
         if not (0 <= n < self.grid.shape[0] and 0 <= m < self.grid.shape[1]):
             reward = self.rewards["out_of_bounds"]
-            # agent.done = True
+            # done = True
             illegal = True
 
         # check for collisions with obstacles (statics and dynamics)
@@ -459,18 +517,22 @@ class GridWorld(gym.Env):
               or (n, m) in [self.agents[j].pos for j in range(len(self.agents)) if j != i]):  # other agents
             reward = self.rewards["obstacles"]
             illegal = True
-            # agent.done = True
+            # done = True
 
         # check if agent reached its goal
         elif (n, m) == agent.goal:
             reward = self.rewards["goal"]
-            agent.done = True
+            done = True
 
         # penalise the agent for extra moves
         else:
             reward = self.rewards["free"]
 
-        return reward, illegal
+        if agent.battery <= 0:
+            reward = self.rewards["battery_depleted"]
+            done = True
+
+        return reward, illegal, done
 
     def step(self, actions):
         self.step_count += 1
@@ -518,20 +580,35 @@ class GridWorld(gym.Env):
 
             self.agents[i].pos = moves[i]
 
+            self.agents[i].battery -= 10
+
         # compute rewards and illegal assertions and cancel move if illegal
         illegals = [False for agent in self.agents]
+        done = [agent.done for agent in self.agents]
         for i in range(len(self.agents)):
             # agent mission is already done
             if self.agents[i].done:
                 continue
 
             # compute rewards and illegal assertions
-            rewards[i], illegals[i] = self._reward_agent(i)
+            rewards[i], illegals[i], done[i] = self._reward_agent(i)
 
         # cancel moves if illegal
         for i in range(len(self.agents)):
             if illegals[i]:
                 self.agents[i].pos = old_pos[i]
+
+        # handle specific cells events and apply done statements after
+        for i in range(len(self.agents)):
+            # agent mission is already done
+            if self.agents[i].done:
+                continue
+
+            # if agent reachs a GCS, charge up the battery
+            if self.grid[self.agents[i].pos] == self.GridLegend.GCS:
+                self.agents[i].battery = GridworldAgent.BATTERY  # TODO : look into slow charging (need to introduce a new "stay idle" action) 
+
+            self.agents[i].done = done[i]
 
         # game over if all the agents are done
         done = [agent.done for agent in self.agents]
@@ -586,7 +663,7 @@ class GridWorld(gym.Env):
                 key_grid = np.zeros(canvas.shape)
                 key_grid[idx] = 1
                 if key == self.GridLegend.AGENT:
-                      key_grid[agent.pos] = 1  # TODO: add other agents in the local obs of single agents
+                      key_grid[agent.pos] = agent.battery  # TODO: add other agents in the local obs of single agents
                 elif key == self.GridLegend.GOAL:
                     key_grid[agent.goal] = 1  # only mark the goal of the agent (not the ones of the others)
                 key_grids.append(key_grid)
@@ -750,17 +827,17 @@ class GridWorld(gym.Env):
         if not value_func:
 
             canvas = self.grid.copy().astype(float)
+
+            agents_goals_canvas = np.zeros(self.grid.shape)
             masks = []
             for agent in self.agents:
-                # mark the visited cells in 0.6 gray
-                # canvas[tuple(self.agents_visited_cells[agent])] = 0.6
                 mask = np.ones(canvas.shape)
-                # mark the terminal states in 0.9 gray
-                canvas[agent.goal] = 0.7
+                # mark the terminal states in 0.9
+                agents_goals_canvas[agent.goal] = 0.7
                 mask[agent.goal] = 0
                 if not policy:
-                    # mark the current position in 0.3 gray
-                    canvas[agent.pos] = 0.3
+                    # mark the current position
+                    agents_goals_canvas[agent.pos] = 0.3
                     mask[agent.pos] = 0
                 masks.append(mask)
 
@@ -780,7 +857,7 @@ class GridWorld(gym.Env):
 
                 from numpy.ma import masked_array
                 for i in range(len(self.agents)):
-                    im = masked_array(canvas, masks[i])
+                    im = masked_array(agents_goals_canvas, masks[i])
                     ax.imshow(im, vmin=0, vmax=1, interpolation="none", cmap=cmaps[i])
 
             else:
@@ -845,3 +922,4 @@ class GridWorld(gym.Env):
         self.rewards["goal"] = grid_param.getfloat("GOAL", self.rewards["goal"])
         self.rewards["obstacles"] = grid_param.getfloat("OBSTACLE", self.rewards["obstacles"])
         self.rewards["out_of_bounds"] = grid_param.getfloat("OUT_OF_BOUNDS", self.rewards["out_of_bounds"])
+        self.rewards["battery_depleted"] = grid_param.getfloat("BATTERY_DEPLETED", self.rewards["battery_depleted"])
