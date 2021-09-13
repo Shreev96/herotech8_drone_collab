@@ -16,7 +16,7 @@ if __name__ == '__main__':
     steps, episodes, train_period, start_goal_reset_period, effects = read_config(config_file)
     grid_size = read_grid_config(config_file)
     init_grid = np.ones((grid_size, grid_size))
-    agents, model = read_agents_config(config_file)
+    agents, _, _ = read_agents_config(config_file)
     if not effects:
         # Ordinary gridworld
         env = GridWorld(agents=agents, grid=init_grid)
@@ -25,7 +25,7 @@ if __name__ == '__main__':
         # Stochastic windy gridworld
         col_wind, range_random_wind, probabilities = read_env_config(config_file)
         env = GridWorld(agents=agents, grid=init_grid, col_wind=col_wind,
-                        range_random_wind=range_random_wind, probabilities=probabilities)
+                            range_random_wind=range_random_wind, probabilities=probabilities)
 
     env.read_reward_config(config_file)
 

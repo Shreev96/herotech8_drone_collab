@@ -277,7 +277,7 @@ class GridworldAgent:
         self.done = False
 
 
-class GridWorldMARL(gym.Env):
+class GridWorld(gym.Env):
     """
     2D Grid world environment
     """
@@ -294,7 +294,7 @@ class GridWorldMARL(gym.Env):
     class GridLegend(IntEnum):
         # FREE = 0
         OBSTACLE = 1
-        GCS = 2 # ground charging stations
+        GCS = 2  # ground charging stations
         AGENT = 3
         GOAL = 4
         # OUT_OF_BOUNDS = 6  # Commented out for now since it interferes with the conv-net input tensor
@@ -308,7 +308,7 @@ class GridWorldMARL(gym.Env):
 
         self.agents = [GridworldAgent(i, None, None) for i in range(n_agents)]
         self.grid = grid
-        self.gcs = np.where(grid == GridWorldMARL.GridLegend.GCS) # Ground charging station
+        self.gcs = np.where(grid == GridWorld.GridLegend.GCS) # Ground charging station
 
         if probabilities is None and range_random_wind == 0:
             probabilities = [1]  # Zero noise
@@ -320,7 +320,7 @@ class GridWorldMARL(gym.Env):
             self.agent_view_width = width
             self.agent_view_height = height
 
-        self.actions = GridWorldMARL.LegalActions
+        self.actions = GridWorld.LegalActions
         self.action_space = spaces.Discrete(len(self.actions))
 
         self.observation_space = spaces.Box(low=0, high=1,
@@ -682,7 +682,7 @@ class GridWorldMARL(gym.Env):
                 key_grid = np.zeros(canvas.shape)
                 key_grid[idx] = 1
                 if key == self.GridLegend.AGENT:
-                      key_grid[agent.pos] = agent.battery  # TODO: add other agents in the local obs of single agents
+                    key_grid[agent.pos] = agent.battery  # TODO: add other agents in the local obs of single agents
                 elif key == self.GridLegend.GOAL:
                     key_grid[agent.goal] = 1  # only mark the goal of the agent (not the ones of the others)
                 # elif key == self.GridLegend.GCS:
@@ -695,7 +695,7 @@ class GridWorldMARL(gym.Env):
 
             return obs
 
-    def eval_value_func(self, agent, model):
+    def eval_value_func(self, agent_id, model):
         """Function to evaluate the value of each position in the grid,
         given a unique agent ID (context for values)"""
 
@@ -849,17 +849,13 @@ class GridWorldMARL(gym.Env):
 
             canvas = self.grid.copy().astype(float)
 
-            agents_goals_canvas = np.zeros(self.grid.shape)
+            goals_canvas = np.zeros(self.grid.shape)
             masks = []
             for agent in self.agents:
                 mask = np.ones(canvas.shape)
                 # mark the terminal states in 0.9
-                agents_goals_canvas[agent.goal] = 0.7
+                goals_canvas[agent.goal] = 0.7
                 mask[agent.goal] = 0
-                if not policy:
-                    # mark the current position
-                    agents_goals_canvas[agent.pos] = 0.3
-                    mask[agent.pos] = 1  # masked cause now I draw circle for agents :(
                 masks.append(mask)
 
             if mode == "human":
@@ -880,7 +876,7 @@ class GridWorldMARL(gym.Env):
 
                 from numpy.ma import masked_array
                 for i in range(len(self.agents)):
-                    im = masked_array(agents_goals_canvas, masks[i])
+                    im = masked_array(goals_canvas, masks[i])
                     ax.imshow(im, vmin=0, vmax=1, interpolation="none", cmap=cmaps[i])
                     ax.add_patch(Circle(self.agents[i].pos[::-1], radius=0.47, color=plt.get_cmap(cmaps[i])(0.7)))
                 
@@ -955,264 +951,3 @@ class GridWorldMARL(gym.Env):
         self.rewards["obstacles"] = grid_param.getfloat("OBSTACLE", self.rewards["obstacles"])
         self.rewards["out_of_bounds"] = grid_param.getfloat("OUT_OF_BOUNDS", self.rewards["out_of_bounds"])
         self.rewards["battery_depleted"] = grid_param.getfloat("BATTERY_DEPLETED", self.rewards["battery_depleted"])
-
-
-class GridWorld(GridWorldMARL):
-    class GridLegend(IntEnum):
-        # FREE = 0
-        OBSTACLE = 1
-        AGENT = 3
-        GOAL = 4
-        # OUT_OF_BOUNDS = 6  # Commented out for now since it interferes with the conv-net input tensor
-    
-    def reset(self, reset_starts_goals=True, radius=10, reset_grid=True):
-        if reset_grid:
-            _grid = self._gen_grid(*self.grid.shape)
-
-            # following loop is potentially infinite
-            while (not reset_starts_goals  # if we will reset starts and goal no need to go further
-                  and (any(_grid[agent.init_pos]  # if any of the generated obstacles is on one of the start position
-                          or _grid[agent.init_goal]  # or one of the goal position
-                          for agent in self.agents))):
-                # generate new obstacles
-                _grid = self._gen_grid(*self.grid.shape)
-            self.grid = _grid
-            print("New obstacles!")
-        
-        if reset_starts_goals:
-            starts, goals = self._gen_starts_goals_positions(radius)
-
-            # following loop is potentially infinite
-            while (any(self.grid[start]  # if any of the start position is on an obstacle
-                      for start in starts)
-                  or any(self.grid[goal]  # if any of the goal position is on an obstacle
-                        for goal in goals)):
-                # generate new positions
-                starts, goals = self._gen_starts_goals_positions(radius)
-
-            print(f"New starts are {starts} and new goals are {goals}")
-
-            for i in range(len(self.agents)):
-                agent = self.agents[i]
-                agent.init_pos = starts[i]
-                agent.init_goal = goals[i]
-
-        for agent in self.agents:
-            agent.pos = agent.init_pos
-            agent.goal = agent.init_goal
-            agent.done = False
-            agent.battery = GridworldAgent.BATTERY
-
-        # self.render()  # show the initial arrangement of the grid
-
-        # return first observation
-        return self.gen_obs()
-
-    def _gen_grid(self, width, height):
-        """Generate a new grid"""
-
-        _grid = random_shape_maze(width, height, max_shapes=5, max_size=3, allow_overlap=False)
-        # _grid = np.genfromtxt(random.choice(glob.glob("sample_grid/*.csv")), delimiter=',')
-        # _grid = np.genfromtxt("sample_grid/grid_5.csv", delimiter=',')
-        # _grid = np.zeros(self.grid.shape)
-
-        return _grid
-
-    def _gen_starts_goals_positions(self, radius=10):
-        """Generate new starts and goal positions for the agents of the environment"""
-
-        # # first row / last row ?
-        # start_bounds = ((0, 1), (0, self.grid.shape[0]))
-        # goal_bounds = ((self.grid.shape[0] - 8, self.grid.shape[0]), (0, self.grid.shape[0]))
-        # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-        #                                     start_bounds=start_bounds, goal_bounds=goal_bounds)
-
-        # # whole grid ?
-        start_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
-        goal_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
-        starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-                                            start_bounds=start_bounds, goal_bounds=goal_bounds)
-
-        # # within a sub_grid ?
-        # starts, goals = random_starts_goals_in_subsquare(n=len(self.agents), width=self.grid.shape[0], sub_width=radius)
-
-        # # goal around gcs ?
-        # if radius >= self.grid.shape[0]:
-        #     start_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
-        #     goal_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
-        # else:
-        #     x,y = self.gcs[0], self.gcs[1]
-        #     top_x = x-radius+1 if x-radius+1>=0 else 0
-        #     top_y = y-radius+1 if y-radius+1>=0 else 0
-        #     bottom_x = x+radius if x+radius-1<self.grid.shape[0] else self.grid.shape[0]
-        #     bottom_y = y+radius if y+radius-1<self.grid.shape[1] else self.grid.shape[1]
-
-        #     start_bounds = ((0, self.grid.shape[1]), (0, self.grid.shape[0]))
-        #     goal_bounds = ((top_x, bottom_x), (top_y, bottom_y))
-        
-        # starts, goals = random_starts_goals(n=len(self.agents), width=self.grid.shape[0],
-        #                                     start_bounds=start_bounds, goal_bounds=goal_bounds)
-        
-        return starts, goals
-
-    def _reward_agent(self, i):
-        """ compute the reward for the i-th agent in the current state"""
-        illegal = False
-        done = False
-        agent = self.agents[i]
-        (n, m) = agent.pos
-
-        # check for out of bounds
-        if not (0 <= n < self.grid.shape[0] and 0 <= m < self.grid.shape[1]):
-            reward = self.rewards["out_of_bounds"]
-            # done = True
-            illegal = True
-
-        # check for collisions with obstacles (statics and dynamics)
-        # for now it only checks for obstacles and others agents but it could be generalized with
-        # the definition of Cell objects : check if cell is empty or not
-        elif (self.grid[n, m] == self.GridLegend.OBSTACLE  # obstacles
-              or (n, m) in [self.agents[j].pos for j in range(len(self.agents)) if j != i]):  # other agents
-            reward = self.rewards["obstacles"]
-            illegal = True
-            # done = True
-
-        # check if agent reached its goal
-        elif (n, m) == agent.goal:
-            reward = self.rewards["goal"]
-            done = True
-
-        # penalise the agent for extra moves
-        else:
-            reward = self.rewards["free"]
-
-        return reward, illegal, done
-
-    def step(self, actions):
-        self.step_count += 1
-
-        assert len(actions) == len(self.agents), "number of actions must be equal to number of agents"
-
-        # get a random permutation ( agents actions/reward must be order-independent)
-        # random_order = np.random.permutation(len(self.agents))
-
-        rewards = np.zeros(len(actions))
-
-        # compute the moves
-        moves = [agent.pos for agent in self.agents]
-
-        for i in range(len(self.agents)):
-
-            # agent mission is already done
-            if self.agents[i].done:
-                continue
-
-            action = actions[i]
-            agent = self.agents[i]
-
-            # agent current pos
-            (n, m) = agent.pos  # n is the row number, m is the column number
-
-            # Adding random noise (wind) to the action
-            noise = self.np_random.choice(self.w_range, p=self.probabilities)
-
-            # Generate move
-            (n_, m_) = self.trans_function((n, m), action, noise)
-
-            # Store backup of move for each agent (i)
-            moves[i] = (n_, m_)
-
-        # compute rewards and apply moves if they are legal:
-        # remember old positions
-        old_pos = [agent.pos for agent in self.agents]
-
-        # apply the moves (even if illegal)
-        for i in range(len(self.agents)):
-            # agent mission is already done
-            if self.agents[i].done:
-                continue
-
-            self.agents[i].pos = moves[i]
-
-        # compute rewards and illegal assertions and cancel move if illegal
-        illegals = [False for agent in self.agents]
-        done = [agent.done for agent in self.agents]
-        for i in range(len(self.agents)):
-            # agent mission is already done
-            if self.agents[i].done:
-                continue
-
-            # compute rewards and illegal assertions
-            rewards[i], illegals[i], done[i] = self._reward_agent(i)
-
-        # cancel moves if illegal
-        for i in range(len(self.agents)):
-            if illegals[i]:
-                self.agents[i].pos = old_pos[i]
-
-        # handle specific cells events and apply done statements after
-        for i in range(len(self.agents)):
-            # agent mission is already done
-            if self.agents[i].done:
-                continue
-            self.agents[i].done = done[i]
-
-        # game over if all the agents are done
-        done = [agent.done for agent in self.agents]
-
-        # compute observation
-        obs = self.gen_obs()
-
-        return obs, rewards, done, {}
-
-    def _gen_obs_agent(self, agent, tensor=1):
-        """Generate the agent's view"""
-        if self.partial_obs:
-            x, y = agent.pos
-            w, h = self.agent_view_width, self.agent_view_height
-            sub_grid = np.full((w, h), self.GridLegend.OUT_OF_BOUNDS)
-
-            # compute sub_grid corners
-            top_x, top_y = x - w // 2, y - h // 2
-
-            for j in range(0, h):
-                for i in range(0, w):
-                    n = top_x + i
-                    m = top_y + j
-
-                    if 0 <= n < self.grid.shape[0] and 0 <= m < self.grid.shape[1]:
-                        sub_grid[i, j] = self.grid[n, m]
-
-            return sub_grid
-
-        else:
-            canvas = self.grid.copy()
-
-            # canvas[agent.pos] = self.GridLegend.AGENT  # TODO: add other agents in the local obs of single agents
-
-            # # only mark the goal of the agent (not the ones of the others)
-            # canvas[agent.goal] = self.GridLegend.GOAL
-
-            # # Convert to len(dict)-dimensional tensor for Conv_SQN. Can turn on or off
-            # if tensor == 1:
-            #     canvas = self.grid2tensor(canvas)
-
-            # return canvas
-
-            key_grids = []
-
-            for key in self.GridLegend:
-                idx = np.where(canvas == key)
-                key_grid = np.zeros(canvas.shape)
-                key_grid[idx] = 1
-                if key == self.GridLegend.AGENT:
-                      key_grid[agent.pos] = 1  # TODO: add other agents in the local obs of single agents
-                elif key == self.GridLegend.GOAL:
-                    key_grid[agent.goal] = 1  # only mark the goal of the agent (not the ones of the others)
-                key_grids.append(key_grid)
-
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            obs = torch.as_tensor(key_grids, device=device)
-            obs = obs.reshape(1, len(self.GridLegend), canvas.shape[0], canvas.shape[1])
-
-            return obs

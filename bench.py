@@ -32,7 +32,7 @@ def bench1():
     grid_size = 10
 
     config = configparser.ConfigParser(allow_no_value=True)
-    config.read("config10MARL.ini")
+    config.read("config.ini")
     config["Grid Parameters"]["grid_size"] = str(grid_size)
 
     total_len = len(list(itertools.product(*params_values)))

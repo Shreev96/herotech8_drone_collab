@@ -12,7 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.tensorboard.summary import hparams
 
 from DQN_Conv import AgentDQN
-from SQN import AgentSQN
+from SQN import AgentSQN, CoordinatorSQN
 from grid_generators.random_start_goal import random_start_goal
 from gridworld import GridWorld
 
@@ -22,7 +22,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU
 
 class SummaryWriter(SummaryWriter):
     def add_hparams(
-        self, hparam_dict, metric_dict, hparam_domain_discrete=None, run_name=None
+            self, hparam_dict, metric_dict, hparam_domain_discrete=None, run_name=None
     ):
         torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
         if type(hparam_dict) is not dict or type(metric_dict) is not dict:
@@ -57,12 +57,16 @@ def read_agents_config(config, env):
     model = config.get("Agents Parameters", "model")
     grid_size = config.getint("Grid Parameters", "grid_size")
 
+    coordinator = None
+
     if model == "SQN":
-        return [AgentSQN(i, obs_shape=env.observation_space.shape, device=DEVICE, config=config) for i in range(n)], model
+        agents = [AgentSQN(i, obs_shape=env.observation_space.shape, device=DEVICE, config=config) for i in range(n)]
+        coordinator = CoordinatorSQN(agents, env.observation_space.shape, DEVICE, config)
     elif model == "DQN":
-        return [AgentDQN(i, obs_shape=env.observation_space.shape, device=DEVICE, config=config) for i in range(n)], model
+        agents = [AgentDQN(i, obs_shape=env.observation_space.shape, device=DEVICE, config=config) for i in range(n)]
     else:
         raise NotImplementedError
+    return agents, coordinator, model
 
 
 def read_env_config(config):
@@ -90,7 +94,7 @@ def create_gif(filename, env, agents, reset_start_goal=True, reset_grid=True, st
             plt.cla()
 
             filenames.append(f'images/gif_frame/E{episode:03}S{step:05}.png')
-            actions = [agents[i].select_action(obs[i]) for i in range(len(env.agents))]
+            actions = [agents[i].select_action(obs[i]) for i in range(len(agents))]
             obs, rewards, done, info = env.step(actions)
             if done:
                 break
@@ -134,21 +138,21 @@ def create_comment(config):
 
 def create_hparams(config):
     hyperparameters = {
-        "steps" : config["RL Parameters"]["steps"],
-        "episodes" : config["RL Parameters"]["episodes"],
-        "train_period" : config["RL Parameters"]["train_period"],
-        "start_goal_reset_period" : config["RL Parameters"]["start_goal_reset_period"],
-        "grid_reset_period" : config["RL Parameters"]["grid_reset_period"],
+        "steps": config["RL Parameters"]["steps"],
+        "episodes": config["RL Parameters"]["episodes"],
+        "train_period": config["RL Parameters"]["train_period"],
+        "start_goal_reset_period": config["RL Parameters"]["start_goal_reset_period"],
+        "grid_reset_period": config["RL Parameters"]["grid_reset_period"],
 
-        "alpha" : config["SQN Parameters"]["alpha"],
-        "update_period" : config["SQN Parameters"]["update_period"],
-        "batch_size" : config["SQN Parameters"]["batch_size"],
+        "alpha": config["SQN Parameters"]["alpha"],
+        "update_period": config["SQN Parameters"]["update_period"],
+        "batch_size": config["SQN Parameters"]["batch_size"],
 
         # rewards:
-        "FREE" : config["Gridworld Parameters"]["FREE"],
-        "GOAL" : config["Gridworld Parameters"]["GOAL"],
-        "OUT_OF_BOUNDS" : config["Gridworld Parameters"]["OUT_OF_BOUNDS"],
-        "OBSTACLES" : config["Gridworld Parameters"]["OBSTACLE"]
+        "FREE": config["Gridworld Parameters"]["FREE"],
+        "GOAL": config["Gridworld Parameters"]["GOAL"],
+        "OUT_OF_BOUNDS": config["Gridworld Parameters"]["OUT_OF_BOUNDS"],
+        "OBSTACLES": config["Gridworld Parameters"]["OBSTACLE"]
     }
     return hyperparameters
 
@@ -177,17 +181,18 @@ def main(config: configparser.ConfigParser):
                                     goal_bounds=((grid_size - 7, grid_size), (0, grid_size)))
 
     #######################
-    # GRIDWORLDS CREATION #
+    # GRIDWORLDMARLS CREATION #
     #######################
-    n_agents = config.getint("Agents Parameters", "n")
+    n = config.getint("Agents Parameters", "n")
 
     if not effects:
-        # Ordinary gridworld
-        env = GridWorld(n_agents=n_agents, grid=init_grid)
+        # Ordinary gridworldMARL
+        env = GridWorld(n_agents=n, grid=init_grid)
+
     else:
-        # Stochastic windy gridworld
+        # Stochastic windy gridworldMARL
         col_wind, range_random_wind, probabilities = read_env_config(config)
-        env = GridWorld(n_agents=n_agents, grid=init_grid, col_wind=col_wind,
+        env = GridWorld(n_agents=n, grid=init_grid, col_wind=col_wind,
                         range_random_wind=range_random_wind, probabilities=probabilities)
 
     env.read_reward_config(config)
@@ -200,7 +205,7 @@ def main(config: configparser.ConfigParser):
     # agent_1 = AgentSQN(2, window_size=grid_size, device=DEVICE)
     # agent_1 = AgentSQN(2, window_size=5, device=device, start=start_position)
     # agent_1 = AgentSQN(2, window_size=5, device=device, goal=goal)
-    agents, model = read_agents_config(config, env)
+    agents, coordinator, model = read_agents_config(config, env)
 
     ########
     # MAIN #
@@ -221,7 +226,7 @@ def main(config: configparser.ConfigParser):
 
     now = datetime.now().strftime('%Y%m%d%H%M%S')
     # Tensorboard initialisation (for logging values)
-    log_dir = os.path.join("runs", now)
+    log_dir = os.path.join("/content/runs", now)
     comment = create_comment(config)
     tb = SummaryWriter(log_dir=log_dir, comment=comment)
 
@@ -237,26 +242,37 @@ def main(config: configparser.ConfigParser):
     starts = []
     goals = []
 
+    # save config file in logs with good datetime
+    with open(f"logs/configs/{now}.ini", "w") as configfile:
+        config.write(configfile)
+
     print("Start")
     try:
-        obs = env.reset(reset_grid=True)  # put True if you want a random init grid
+        # env.agents[0].init_pos = (0,0)
+        # env.agents[0].init_goal = (9,9)
+        # env.gcs = (5,4)
+        # env.grid[env.gcs] = env.GridLegend.GCS
+        obs = env.reset(reset_starts_goals=True, reset_grid=True)  # put reset_grid=True if you want a random init grid
+
         env.render()
         plt.savefig(f"images/{now}.png")
+        plt.savefig(f"images/{now}.svg", format="svg")
         plt.show()
 
         train_period_s = np.linspace(start=2000, stop=train_period, num=50, endpoint=True, dtype=int)
         train_period_delay_s = np.linspace(start=0, stop=8000, num=50, endpoint=True, dtype=int)
 
         radius_s = np.linspace(start=2, stop=10, num=9, endpoint=True, dtype=int)
-        radius_delays = np.linspace(start=0, stop=20000, num=9, endpoint=True, dtype=int)
+        radius_delays = np.linspace(start=0, stop=16000, num=9, endpoint=True, dtype=int)
+        print(radius_delays)
         radius_index = 0
         radius = radius_s[0]
 
         # train_period_index = 0
         # train_period = train_period_s[0]
 
-        reset_start_goal = True
-        reset_grid = False
+        reset_start_goal = True 
+        reset_grid = True
 
         start_time = time.time()
 
@@ -266,61 +282,81 @@ def main(config: configparser.ConfigParser):
             #     train_period_index += 1
             #     print(f"New training period is {train_period} steps")
 
-            # if episode <= 10000 and episode == radius_delays[radius_index]:
-            #     radius = radius_s[radius_index]
-            #     radius_index += 1
-            #     print(f"Radius increased to {radius} cells")
+            if episode <= 16000 and episode == radius_delays[radius_index]:
+                radius = radius_s[radius_index]
+                radius_index += 1
+                print(f"Radius increased to {radius} cells")
 
             # if start_goal_period elapsed: change start and goal
             reset_start_goal = episode > 0 and episode % start_goal_reset_period == 0
 
             # if reset_grid_period elapsed: change grid
-            # reset_grid = episode > 0 and episode % grid_reset_period == 0
+            reset_grid = episode > 0 and episode % grid_reset_period == 0
 
-            obs = env.reset(reset_starts_goals=reset_start_goal, radius=radius, reset_grid=reset_grid)
+            obs = env.reset(reset_starts_goals=reset_start_goal, radius=2, reset_grid=reset_grid)
+
             starts.append([agent.init_pos for agent in env.agents])
             goals.append([agent.init_goal for agent in env.agents])
-            reset_start_goal = False
-            reset_grid = False
+
+            working_agents = set(agents)  # set of agents with on-going mission
 
             total_reward = np.zeros(len(agents))
             total_loss = 0
 
             for step in range(steps):
                 # env.render()
+
+                # create new observations using the local obs of each agent and adding the pos and goal of other agents
+                obs = [torch.cat([obs[i]] + [obs[j][:, -2:] for j in range(len(agents)) if j != i], dim=1)
+                       for i in range(len(agents))]
+
+                
                 # select and perform actions
-                actions = [agents[i].select_action(obs[i]) for i in range(len(env.agents))]
+                actions = [agents[i].select_action(obs[i]) for i in range(len(agents))]
                 new_obs, rewards, done, info = env.step(actions)
 
                 # store the transition in memory
-                for i in range(len(env.agents)):
+                for i in range(len(agents)):
                     agent = agents[i]
-                    action = actions[i]
-                    reward = torch.tensor([rewards[i]], device=DEVICE)
-                    total_reward[i] += reward.item()
-                    agent.add_to_buffer(obs[i], action, reward, new_obs[i], done[i])
+                    if agent in working_agents:
+                        # only add relevant transitions: if agent mission was already done, don't add transition in replay memory
+                        action = actions[i]
+                        reward = torch.tensor([rewards[i]], device=DEVICE)
+                        total_reward[i] += reward.item()
+                        # compute new_observation the same way as before
+                        new_observation = torch.cat([new_obs[i]] + [new_obs[j][:, -2:] for j in range(len(agents)) if j != i],
+                                                    dim=1)
+
+                        coordinator.add_to_buffer(obs[i], action, reward, new_observation, done[i])
+
+                        if done[i]:
+                            # if agent mission is done, remove it from working agents (to prevent adding future transitions)
+                            reason = ""
+                            if reward == env.rewards["goal"]:
+                                reason = "REACHED GOAL"
+                            elif reward == env.rewards["battery_depleted"]:
+                                reason = "BATTERY DEPLETED"
+
+                            print(f"Agent {i} is done after {step + 1} time steps ({reason})")
+                            working_agents.remove(agent)
 
                 # move to the next state
                 obs = new_obs
 
                 # Perform one step of the optimisation
                 if step_done > 0 and step_done % train_period == 0:
-                    for i in range(len(env.agents)):
-                        agent = agents[i]
-                        loss = agent.train()
-                        total_loss += loss * agent.batch_size
+                    loss = coordinator.train()
+                    total_loss += loss * coordinator.batch_size
 
                 step_done += 1
-
                 if all(done):
                     break
 
             # # Perform one step of the optimisation
             # if episode > 0 and episode % train_period == 0:
-            #     for i in range(len(env.agents)):
-            #         agent = agents[i]
-            #         loss = agent.train()
-            #         total_loss += loss * agent.batch_size
+            #     for i in range(len(agents)):
+            #         loss = coordinator.train()
+            #         total_loss += loss * coordinator.batch_size
 
             print(f"Episode {episode} finished after {step + 1} time steps")
 
@@ -379,8 +415,7 @@ def main(config: configparser.ConfigParser):
     except Exception as e:
         raise e
     finally:
-
-        results_path = "logs/results/fixed_obstacle_random_grid_random"
+        results_path = "logs"
 
         total_reward_s = np.array(total_reward_s)
         cumulated_rewards = np.array(cumulated_rewards)
@@ -481,5 +516,5 @@ def main(config: configparser.ConfigParser):
 
 if __name__ == '__main__':
     config = configparser.ConfigParser(allow_no_value=True)
-    config.read("config10.ini")
+    config.read("config.ini")
     main(config)

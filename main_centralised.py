@@ -14,7 +14,7 @@ from torch.utils.tensorboard.summary import hparams
 from DQN_Conv import AgentDQN
 from SQN import AgentSQN, CoordinatorSQN
 from grid_generators.random_start_goal import random_start_goal
-from gridworld import GridWorldMARL
+from gridworld import GridWorld
 
 # Model training parameters
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU
@@ -91,7 +91,7 @@ def create_gif(filename, env, agents, reset_start_goal=True, reset_grid=True, st
             plt.cla()
 
             filenames.append(f'images/gif_frame/E{episode:03}S{step:05}.png')
-            actions = [agents[i].select_action(obs[i]) for i in range(n_agents)]
+            actions = [agents[i].select_action(obs[i]) for i in range(len(agents))]
             obs, rewards, done, info = env.step(actions)
             if done:
                 break
@@ -184,12 +184,12 @@ def main(config: configparser.ConfigParser):
 
     if not effects:
         # Ordinary gridworldMARL
-        env = GridWorldMARL(n_agents=n, grid=init_grid)
+        env = GridWorld(n_agents=n, grid=init_grid)
 
     else:
         # Stochastic windy gridworldMARL
         col_wind, range_random_wind, probabilities = read_env_config(config)
-        env = GridWorldMARL(n_agents=n, grid=init_grid, col_wind=col_wind,
+        env = GridWorld(n_agents=n, grid=init_grid, col_wind=col_wind,
                         range_random_wind=range_random_wind, probabilities=probabilities)
 
     env.read_reward_config(config)
@@ -508,5 +508,5 @@ def main(config: configparser.ConfigParser):
 
 if __name__ == '__main__':
     config = configparser.ConfigParser(allow_no_value=True)
-    config.read("config10MARL.ini")
+    config.read("config.ini")
     main(config)
