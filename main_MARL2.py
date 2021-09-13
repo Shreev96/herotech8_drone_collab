@@ -60,13 +60,10 @@ def read_agents_config(config, env):
     coordinator = None
 
     if model == "SQN":
-        agents = [AgentSQN(i, obs_shape=env.observation_space.shape, device=DEVICE, config=config) for i in range(n)]
-        coordinator = CoordinatorSQN(agents, env.observation_space.shape, DEVICE, config)
-    elif model == "DQN":
-        agents = [AgentDQN(i, obs_shape=env.observation_space.shape, device=DEVICE, config=config) for i in range(n)]
+        coordinator = AgentSQN(0, obs_shape=env.observation_space.shape, device=DEVICE, config=config)
     else:
         raise NotImplementedError
-    return agents, coordinator, model
+    return n, coordinator, model
 
 
 def read_env_config(config):
@@ -94,7 +91,7 @@ def create_gif(filename, env, agents, reset_start_goal=True, reset_grid=True, st
             plt.cla()
 
             filenames.append(f'images/gif_frame/E{episode:03}S{step:05}.png')
-            actions = [agents[i].select_action(obs[i]) for i in range(len(agents))]
+            actions = [agents[i].select_action(obs[i]) for i in range(n_agents)]
             obs, rewards, done, info = env.step(actions)
             if done:
                 break
@@ -205,7 +202,7 @@ def main(config: configparser.ConfigParser):
     # agent_1 = AgentSQN(2, window_size=grid_size, device=DEVICE)
     # agent_1 = AgentSQN(2, window_size=5, device=device, start=start_position)
     # agent_1 = AgentSQN(2, window_size=5, device=device, goal=goal)
-    agents, coordinator, model = read_agents_config(config, env)
+    n_agents, coordinator, model = read_agents_config(config, env)
 
     ########
     # MAIN #
@@ -217,9 +214,9 @@ def main(config: configparser.ConfigParser):
     print("train_period", train_period)
     print("start_goal_reset_period", start_goal_reset_period)
     print("grid_reset_period", grid_reset_period)
-    print("alpha", agents[0].alpha)
-    print("update_period", agents[0].update_steps)
-    print("batch_size", agents[0].batch_size)
+    print("alpha", coordinator.alpha)
+    print("update_period", coordinator.update_steps)
+    print("batch_size", coordinator.batch_size)
     print("reward free", env.rewards["free"])
     print("reward goal", env.rewards["goal"])
     print("reward obstacle", env.rewards["obstacles"])
@@ -233,7 +230,7 @@ def main(config: configparser.ConfigParser):
     plt.ion()
 
     total_reward_s = []
-    cumulated_reward = np.zeros(len(agents))
+    cumulated_reward = np.zeros(n_agents)
     cumulated_rewards = []
     total_steps = []
     total_loss_s = []
@@ -248,10 +245,6 @@ def main(config: configparser.ConfigParser):
 
     print("Start")
     try:
-        # env.agents[0].init_pos = (0,0)
-        # env.agents[0].init_goal = (9,9)
-        # env.gcs = (5,4)
-        # env.grid[env.gcs] = env.GridLegend.GCS
         obs = env.reset(reset_starts_goals=True, reset_grid=True)  # put reset_grid=True if you want a random init grid
 
         env.render()
@@ -293,38 +286,36 @@ def main(config: configparser.ConfigParser):
             # if reset_grid_period elapsed: change grid
             reset_grid = episode > 0 and episode % grid_reset_period == 0
 
-            obs = env.reset(reset_starts_goals=reset_start_goal, radius=2, reset_grid=reset_grid)
+            obs = env.reset(reset_starts_goals=reset_start_goal, radius=3, reset_grid=reset_grid)
 
             starts.append([agent.init_pos for agent in env.agents])
             goals.append([agent.init_goal for agent in env.agents])
 
-            working_agents = set(agents)  # set of agents with on-going mission
+            working_agents = set(range(n_agents))  # set of agents with on-going mission
 
-            total_reward = np.zeros(len(agents))
+            total_reward = np.zeros(n_agents)
             total_loss = 0
 
             for step in range(steps):
                 # env.render()
 
                 # create new observations using the local obs of each agent and adding the pos and goal of other agents
-                obs = [torch.cat([obs[i]] + [obs[j][:, -2:] for j in range(len(agents)) if j != i], dim=1)
-                       for i in range(len(agents))]
-
+                obs = [torch.cat([obs[i]] + [obs[j][:, -2:] for j in range(n_agents) if j != i], dim=1)
+                       for i in range(n_agents)]
                 
                 # select and perform actions
-                actions = [agents[i].select_action(obs[i]) for i in range(len(agents))]
+                actions = [coordinator.select_action(obs[i]) for i in range(n_agents)]
                 new_obs, rewards, done, info = env.step(actions)
 
                 # store the transition in memory
-                for i in range(len(agents)):
-                    agent = agents[i]
-                    if agent in working_agents:
+                for i in range(n_agents):
+                    if i in working_agents:
                         # only add relevant transitions: if agent mission was already done, don't add transition in replay memory
                         action = actions[i]
                         reward = torch.tensor([rewards[i]], device=DEVICE)
                         total_reward[i] += reward.item()
                         # compute new_observation the same way as before
-                        new_observation = torch.cat([new_obs[i]] + [new_obs[j][:, -2:] for j in range(len(agents)) if j != i],
+                        new_observation = torch.cat([new_obs[i]] + [new_obs[j][:, -2:] for j in range(n_agents) if j != i],
                                                     dim=1)
 
                         coordinator.add_to_buffer(obs[i], action, reward, new_observation, done[i])
@@ -338,23 +329,24 @@ def main(config: configparser.ConfigParser):
                                 reason = "BATTERY DEPLETED"
 
                             print(f"Agent {i} is done after {step + 1} time steps ({reason})")
-                            working_agents.remove(agent)
+                            working_agents.remove(i)
 
                 # move to the next state
                 obs = new_obs
+                step_done += 1
 
                 # Perform one step of the optimisation
                 if step_done > 0 and step_done % train_period == 0:
                     loss = coordinator.train()
                     total_loss += loss * coordinator.batch_size
+                    step_done =0
 
-                step_done += 1
                 if all(done):
                     break
 
             # # Perform one step of the optimisation
             # if episode > 0 and episode % train_period == 0:
-            #     for i in range(len(agents)):
+            #     for i in range(n_agents):
             #         loss = coordinator.train()
             #         total_loss += loss * coordinator.batch_size
 
@@ -386,13 +378,13 @@ def main(config: configparser.ConfigParser):
             if episode > 0 and episode % 10000 == 0:
                 t_rwd_s = np.array(total_reward_s)
                 
-                for agent in agents:
-                    agent.save(f"logs/models/{now}_{agent.id}_{episode}.pt")
+                for i in range(n_agents):
+                    coordinator.save(f"logs/models/{now}_{i}_{episode}.pt")
                 
                 data = {"Loss": total_loss_s,
                         "Total Steps": total_steps,
                         "Times": times}
-                for i in range(len(agents)):
+                for i in range(n_agents):
                     data[f"Total Reward per episode {i}"] = t_rwd_s[:, i]
 
                 training_data = pd.DataFrame(data=data)
@@ -400,9 +392,9 @@ def main(config: configparser.ConfigParser):
 
                 # save cumulated reward plot
                 plt.clf()
-                fig, ax = plt.subplots(nrows=len(agents), ncols=1, sharex=True, sharey=True, squeeze=0)
+                fig, ax = plt.subplots(nrows=n_agents, ncols=1, sharex=True, sharey=True, squeeze=0)
                 fig.suptitle(("Cumulated Reward per episode for " + model))
-                for i in range(len(agents)):
+                for i in range(n_agents):
                     ax[i, 0].set_title(f"Agent {i}")
                     ax[i, 0].plot(t_rwd_s[:,i])
                 plt.xlabel("Epochs")
@@ -423,8 +415,8 @@ def main(config: configparser.ConfigParser):
         goals=np.array(goals, dtype='int,int')
 
         # save models
-        for agent in agents:
-            agent.save(f"{results_path}/models/{now}_{agent.id}.pt")
+        for i in range(n_agents):
+            coordinator.save(f"{results_path}/models/{now}_{i}.pt")
 
         # save config file in logs with good datetime
         with open(f"{results_path}/configs/{now}.ini", "w") as configfile:
@@ -433,7 +425,7 @@ def main(config: configparser.ConfigParser):
         data = {"Loss": total_loss_s,
                 "Total Steps": total_steps,
                 "Times": times}
-        for i in range(len(agents)):
+        for i in range(n_agents):
             data[f"Total Reward per episode {i}"] = total_reward_s[:, i]
             data[f"Starts {i}"] = starts[:,i]
             data[f"Goals {i}"] = goals[:,i]
@@ -443,9 +435,9 @@ def main(config: configparser.ConfigParser):
 
         # save cumulated reward plot
         plt.clf()
-        fig, ax = plt.subplots(nrows=len(agents), ncols=1, sharex=True, sharey=True, squeeze=0)
+        fig, ax = plt.subplots(nrows=n_agents, ncols=1, sharex=True, sharey=True, squeeze=0)
         fig.suptitle(("Cumulated Reward per episode for " + model))
-        for i in range(len(agents)):
+        for i in range(n_agents):
             ax[i, 0].set_title(f"Agent {i}")
             ax[i, 0].plot(total_reward_s[:,i])
         plt.xlabel("Epochs")

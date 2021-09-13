@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from main_MARL import main
+from main import main
 import configparser
 import itertools
 
@@ -10,10 +10,10 @@ import shutil
 def bench1():
     hyperparameters = {
         "steps" : [100],
-        "episodes" : [10000],
+        "episodes" : [10000]*4,
         "train_period" : [5],
         "start_goal_reset_period" : [1],
-        "grid_reset_period" : [20],
+        "grid_reset_period" : [1],
 
         "alpha" : [0.05],
         "update_period" : [3],
@@ -140,7 +140,7 @@ if __name__ == '__main__':
     for run in old_runs:
         if run.startswith("."):
             continue
-        shutil.move(f"runs/{run}", "old_runs")
+        shutil.move(f"runs/{run}", "/content/old_runs")
 
     bench1()
     # bench2()

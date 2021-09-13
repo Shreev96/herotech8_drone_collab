@@ -228,13 +228,18 @@ def main(config: configparser.ConfigParser):
     plt.ion()
 
     total_reward_s = []
-    cumulated_reward = 0
+    cumulated_reward = np.zeros(len(agents))
     cumulated_rewards = []
     total_steps = []
     total_loss_s = []
+
+    times = []
+    starts = []
+    goals = []
+
     print("Start")
     try:
-        env.reset(reset_grid=False)  # put True if you want a random init grid
+        obs = env.reset(reset_grid=True)  # put True if you want a random init grid
         env.render()
         plt.savefig(f"images/{now}.png")
         plt.show()
@@ -273,10 +278,12 @@ def main(config: configparser.ConfigParser):
             # reset_grid = episode > 0 and episode % grid_reset_period == 0
 
             obs = env.reset(reset_starts_goals=reset_start_goal, radius=radius, reset_grid=reset_grid)
+            starts.append([agent.init_pos for agent in env.agents])
+            goals.append([agent.init_goal for agent in env.agents])
             reset_start_goal = False
             reset_grid = False
 
-            total_reward = 0
+            total_reward = np.zeros(len(agents))
             total_loss = 0
 
             for step in range(steps):
@@ -290,7 +297,7 @@ def main(config: configparser.ConfigParser):
                     agent = agents[i]
                     action = actions[i]
                     reward = torch.tensor([rewards[i]], device=DEVICE)
-                    total_reward += reward.item()
+                    total_reward[i] += reward.item()
                     agent.add_to_buffer(obs[i], action, reward, new_obs[i], done[i])
 
                 # move to the next state
@@ -320,8 +327,10 @@ def main(config: configparser.ConfigParser):
             total_reward_s.append(total_reward)
             total_steps.append(step + 1)
             total_loss_s.append(total_loss)
-            cumulated_reward += total_reward
-            cumulated_rewards.append(cumulated_reward)
+            cumulated_reward += np.array(total_reward)
+            cumulated_rewards.append(cumulated_reward.copy())
+
+            times.append(time.time() - start_time)
 
             # Tensorboard logging
 
@@ -334,34 +343,78 @@ def main(config: configparser.ConfigParser):
             #         # tb.add_histogram(f"{suffix}.{name}.grad", weight.grad, episode)
 
             tb.add_scalar("Loss", total_loss, episode)
-            tb.add_scalar("Total Reward", total_reward, episode)
-            tb.add_scalar("Cumulated Reward", cumulated_reward, episode)
+            tb.add_scalar("Total Reward", total_reward[0], episode)
+            tb.add_scalar("Cumulated Reward", cumulated_reward[0], episode)
             tb.add_scalar("Total steps", step + 1, episode)
+
+            if episode > 0 and episode % 10000 == 0:
+                t_rwd_s = np.array(total_reward_s)
+                
+                for agent in agents:
+                    agent.save(f"logs/models/{now}_{agent.id}_{episode}.pt")
+                
+                data = {"Loss": total_loss_s,
+                        "Total Steps": total_steps,
+                        "Times": times}
+                for i in range(len(agents)):
+                    data[f"Total Reward per episode {i}"] = t_rwd_s[:, i]
+
+                training_data = pd.DataFrame(data=data)
+                training_data.to_csv(f"logs/csv/{now}.csv")
+
+                # save cumulated reward plot
+                plt.clf()
+                fig, ax = plt.subplots(nrows=len(agents), ncols=1, sharex=True, sharey=True, squeeze=0)
+                fig.suptitle(("Cumulated Reward per episode for " + model))
+                for i in range(len(agents)):
+                    ax[i, 0].set_title(f"Agent {i}")
+                    ax[i, 0].plot(t_rwd_s[:,i])
+                plt.xlabel("Epochs")
+                plt.savefig(f"logs/cumulated_rewards/{now}.png")
+                tb.add_figure("Cumulated Reward Plot", plt.gcf())
+                plt.clf()
 
         print("Complete")
         print("--- %s seconds ---" % (time.time() - start_time))
     except Exception as e:
         raise e
     finally:
+
+        results_path = "logs/results/fixed_obstacle_random_grid_random"
+
+        total_reward_s = np.array(total_reward_s)
+        cumulated_rewards = np.array(cumulated_rewards)
+        starts =np.array(starts, dtype='int,int')
+        goals=np.array(goals, dtype='int,int')
+
         # save models
         for agent in agents:
-            agent.save(f"logs/models/{now}_{agent.id}.pt")
+            agent.save(f"{results_path}/models/{now}_{agent.id}.pt")
 
         # save config file in logs with good datetime
-        with open(f"logs/configs/{now}.ini", "w") as configfile:
+        with open(f"{results_path}/configs/{now}.ini", "w") as configfile:
             config.write(configfile)
 
-        training_data = pd.DataFrame(data={"Cumulated Reward":cumulated_rewards,
-                                           "Loss": total_loss_s,
-                                           "Total Steps": total_steps})
-        training_data.to_csv(f"logs/csv/{now}.csv")
+        data = {"Loss": total_loss_s,
+                "Total Steps": total_steps,
+                "Times": times}
+        for i in range(len(agents)):
+            data[f"Total Reward per episode {i}"] = total_reward_s[:, i]
+            data[f"Starts {i}"] = starts[:,i]
+            data[f"Goals {i}"] = goals[:,i]
+
+        training_data = pd.DataFrame(data=data)
+        training_data.to_csv(f"{results_path}/csv/{now}.csv")
 
         # save cumulated reward plot
         plt.clf()
-        plt.title(("Cumulated Reward for " + model))
+        fig, ax = plt.subplots(nrows=len(agents), ncols=1, sharex=True, sharey=True, squeeze=0)
+        fig.suptitle(("Cumulated Reward per episode for " + model))
+        for i in range(len(agents)):
+            ax[i, 0].set_title(f"Agent {i}")
+            ax[i, 0].plot(total_reward_s[:,i])
         plt.xlabel("Epochs")
-        plt.plot(total_reward_s)
-        plt.savefig(f"logs/cumulated_rewards/{now}.png")
+        plt.savefig(f"{results_path}/cumulated_rewards/{now}.png")
         tb.add_figure("Cumulated Reward Plot", plt.gcf())
         plt.clf()
 
@@ -369,7 +422,7 @@ def main(config: configparser.ConfigParser):
         plt.title(("Total steps for " + model))
         plt.xlabel("Epochs")
         plt.plot(total_steps)
-        plt.savefig(f"logs/total_steps/{now}.png")
+        plt.savefig(f"{results_path}/total_steps/{now}.png")
         tb.add_figure("Total steps Plot", plt.gcf())
         plt.clf()
 
@@ -387,9 +440,17 @@ def main(config: configparser.ConfigParser):
         plt.title("Improvement over training episodes for " + model)
         plt.xlabel("Epochs")
         plt.plot(improvement)
-        plt.savefig(f"logs/improvement/{now}.png")
+        plt.savefig(f"{results_path}/improvement/{now}.png")
         tb.add_figure("Improvement Plot", plt.gcf())
         plt.clf()
+
+        # save times plot
+        plt.title("Times per episodes")
+        plt.xlabel("Epochs")
+        plt.plot(times)
+        plt.savefig(f"{results_path}/times/{now}.png")
+        plt.clf()
+
 
         # plt.figure()
         # # evaluate value function for agent 1 (id = 0) and display
@@ -405,9 +466,9 @@ def main(config: configparser.ConfigParser):
         # plt.show()
 
         hyperparameters = create_hparams(config)
-        metric_dict_={
-            "Success Rate": improvement[-1]/len(total_steps),
-            "Mean Cumulated Reward": cumulated_reward/len(total_steps),
+        metric_dict_ = {
+            "Success Rate": improvement[-1] / len(total_steps),
+            "Mean Cumulated Reward": cumulated_reward[0] / len(total_steps),
             "Mean Total Steps": np.mean(total_steps)
         }
         tb.add_hparams(hyperparameters, metric_dict=metric_dict_, run_name="")

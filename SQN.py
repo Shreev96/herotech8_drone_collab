@@ -67,15 +67,14 @@ class AgentSQN(AgentBase):
             a = c.sample()
         return a.view(1,)  # Want a 1D tensor returned
 
+    def select_greedy_action(self, observation):
+        observation = observation.float()
+        return self.policy_model(observation).max(1)[1].view(1,)
+
+
     def train(self):
         if len(self.experience_replay) < self.batch_size:
             return 0
-
-        self._learned_steps += 1
-
-        if self._learned_steps % self.update_steps == 0:
-            # Update the target network, copying all weights and biases
-            self.target_model.load_state_dict(self.policy_model.state_dict())
 
         transitions = self.sample_buffer(self.batch_size)
 
@@ -113,6 +112,13 @@ class AgentSQN(AgentBase):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+
+        self._learned_steps += 1
+
+        if self._learned_steps % self.update_steps == 0:
+            # Update the target network, copying all weights and biases
+            self.target_model.load_state_dict(self.policy_model.state_dict())
+            self._learned_steps = 0
 
         return loss.item()
 
